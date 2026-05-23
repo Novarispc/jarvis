@@ -2004,7 +2004,7 @@ async def voice_handler(ws: WebSocket):
 
             async def _send_greeting():
                 try:
-                    greeting = f"It's {now.strftime('%I:%M %p')}, sir."
+                    greeting = "Good day, sir."
                     audio_bytes = await synthesize_speech(greeting)
                     if audio_bytes:
                         encoded = base64.b64encode(audio_bytes).decode()

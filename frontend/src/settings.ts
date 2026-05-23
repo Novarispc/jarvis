@@ -405,6 +405,7 @@ function wireEvents() {
     document.getElementById(id)?.addEventListener("click", async () => {
       // Immediate visual feedback - update orb color instantly
       document.documentElement.style.setProperty("--orb-color", color);
+      (window as any).setOrbColor?.(color);  // Update Three.js orb color
       localStorage.setItem("jarvis-orb-color", color);
       // Update hex input
       const hexInput = document.getElementById("input-hex-color") as HTMLInputElement;
@@ -483,6 +484,7 @@ function wireEvents() {
       hexPreview.style.background = value;
       // Apply immediately
       document.documentElement.style.setProperty("--orb-color", value);
+      (window as any).setOrbColor?.(value);  // Update Three.js orb color
       localStorage.setItem("jarvis-orb-color", value);
       // Remove selection from swatches
       document.querySelectorAll(".color-swatch").forEach(btn => btn.classList.remove("color-selected"));

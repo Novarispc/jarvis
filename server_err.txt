@@ -1,14 +1,6 @@
-INFO:     Started server process [27148]
+INFO:     Started server process [38988]
 INFO:     Waiting for application startup.
-2026-05-23 13:28:15,533 [jarvis] Context refresh thread started
-2026-05-23 13:28:15,533 [jarvis] JARVIS server starting
+2026-05-23 13:32:48,386 [jarvis] Context refresh thread started
+2026-05-23 13:32:48,387 [jarvis] JARVIS server starting
 INFO:     Application startup complete.
 INFO:     Uvicorn running on https://0.0.0.0:8340 (Press CTRL+C to quit)
-INFO:     127.0.0.1:55979 - "WebSocket /ws/voice" [accepted]
-2026-05-23 13:28:23,241 [jarvis] Voice WebSocket connected
-INFO:     connection open
-2026-05-23 13:28:24,652 [jarvis] Edge TTS: 19872 bytes
-2026-05-23 13:28:24,655 [jarvis] JARVIS: It's 01:28 PM, sir.
-INFO:     127.0.0.1:53570 - "WebSocket /ws/voice" [accepted]
-2026-05-23 13:28:27,120 [jarvis] Voice WebSocket connected
-INFO:     connection open

@@ -51,6 +51,11 @@ function updateStatus(state: State) {
 const canvas = document.getElementById("orb-canvas") as HTMLCanvasElement;
 const orb = createOrb(canvas);
 
+// Global function to update orb color from settings
+(window as any).setOrbColor = (hexColor: string) => {
+  orb.setColor(hexColor);
+};
+
 const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
 const WS_URL = `${wsProto}//${window.location.host}/ws/voice`;
 const socket = createSocket(WS_URL);

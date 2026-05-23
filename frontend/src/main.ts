@@ -57,7 +57,8 @@ const orb = createOrb(canvas);
 };
 
 const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
-const WS_URL = `${wsProto}//${window.location.host}/ws/voice`;
+const hostname = window.location.hostname;
+const WS_URL = `${wsProto}//${hostname}:8340/ws/voice`;
 const socket = createSocket(WS_URL);
 
 const audioPlayer = createAudioPlayer();

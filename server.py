@@ -1163,41 +1163,56 @@ async def _llm_call(system: str, messages: list[dict], max_tokens: int = 250) ->
             content = " ".join(b.get("text", "") for b in content if isinstance(b, dict))
         chat_msgs.append({"role": role, "content": content})
 
-    # Primary LLM (Groq when configured) with retry on transient errors
+    # Primary LLM (Groq when configured) — single attempt, fail fast on rate limits
     if OLLAMA_BASE_URL and OLLAMA_BASE_URL.rstrip('/') != LOCAL_OLLAMA_URL.rstrip('/'):
-        last_err: Optional[Exception] = None
-        for attempt in range(3):
-            try:
-                return await _call_openai_compat(
-                    OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_API_KEY,
-                    chat_msgs, max_tokens,
-                    connect_timeout=5.0, read_timeout=30.0,
-                )
-            except httpx.HTTPStatusError as e:
-                last_err = e
-                status = e.response.status_code
-                if status == 429 or 500 <= status < 600:
-                    wait_s = 1.5 * (attempt + 1)
-                    log.warning(f"Primary LLM {status}, retrying in {wait_s}s (attempt {attempt + 1}/3)")
+        try:
+            return await _call_openai_compat(
+                OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_API_KEY,
+                chat_msgs, max_tokens,
+                connect_timeout=5.0, read_timeout=30.0,
+            )
+        except httpx.HTTPStatusError as e:
+            status = e.response.status_code
+            if status == 429:
+                # Respect Retry-After header — but only wait if it's short (≤ 4s)
+                retry_after = e.response.headers.get("retry-after", "")
+                try:
+                    wait_s = float(retry_after)
+                except (ValueError, TypeError):
+                    wait_s = 99.0  # Unknown — don't wait
+                if 0 < wait_s <= 4.0:
+                    log.warning(f"Primary LLM 429, waiting {wait_s}s (Retry-After header)")
                     await asyncio.sleep(wait_s)
-                    continue
-                break
-            except Exception as e:
-                last_err = e
-                log.warning(f"Primary LLM error (attempt {attempt + 1}/3): {e}")
-                await asyncio.sleep(1.0)
-        log.warning(f"Primary LLM failed after retries: {last_err}")
+                    try:
+                        return await _call_openai_compat(
+                            OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_API_KEY,
+                            chat_msgs, max_tokens,
+                            connect_timeout=5.0, read_timeout=30.0,
+                        )
+                    except Exception as e2:
+                        log.warning(f"Primary LLM retry failed: {e2}")
+                else:
+                    log.warning(f"Primary LLM rate limited (429) — failing fast, no retry")
+            elif 500 <= status < 600:
+                log.warning(f"Primary LLM {status} server error — failing fast")
+            else:
+                log.warning(f"Primary LLM HTTP {status}: {e}")
+        except Exception as e:
+            log.warning(f"Primary LLM error: {e}")
 
-    # Local Ollama fallback — short timeout so we fail fast when it's not running
-    try:
-        return await _call_openai_compat(
-            LOCAL_OLLAMA_URL, LOCAL_OLLAMA_MODEL, "",
-            chat_msgs, max_tokens,
-            connect_timeout=2.0, read_timeout=15.0,
-        )
-    except Exception as e:
-        log.error(f"Local Ollama also failed: {e}")
-        return "Apologies, sir. The server's having a moment — try again in a few seconds."
+    # Local Ollama fallback — only if explicitly enabled AND different from primary
+    _local_enabled = os.getenv("LOCAL_OLLAMA", "false").lower() in ("true", "1", "yes")
+    if _local_enabled and LOCAL_OLLAMA_URL.rstrip('/') != OLLAMA_BASE_URL.rstrip('/'):
+        try:
+            return await _call_openai_compat(
+                LOCAL_OLLAMA_URL, LOCAL_OLLAMA_MODEL, "",
+                chat_msgs, max_tokens,
+                connect_timeout=1.5, read_timeout=10.0,
+            )
+        except Exception as e:
+            log.debug(f"Local Ollama unavailable: {e}")
+
+    return "Apologies, sir. I'm rate limited — try again in a moment."
 
 
 async def generate_response(
@@ -1977,7 +1992,10 @@ async def voice_handler(ws: WebSocket):
 
             voice_state["last_user_time"] = time.time()
             log.info(f"User: {user_text}")
-            await ws.send_json({"type": "status", "state": "thinking"})
+            try:
+                await ws.send_json({"type": "status", "state": "thinking"})
+            except (WebSocketDisconnect, RuntimeError):
+                break
 
             # Lazy project scan on first message
             global cached_projects
@@ -2291,22 +2309,39 @@ async def voice_handler(ws: WebSocket):
                     else:
                         summary_update_pending = False
 
-                # Extract memories in background (doesn't block response)
-                if len(user_text) > 15:
+                # Extract memories in background — only when exchange looks factual.
+                # Skip for short chitchat to avoid burning API rate limits needlessly.
+                _memory_triggers = ["my ", "i am ", "i'm ", "i work", "i like", "i want",
+                                     "remember", "don't forget", "note that", "always ",
+                                     "never ", "prefer", "name is", "called "]
+                _should_remember = len(user_text) > 30 and any(t in user_text.lower() for t in _memory_triggers)
+                if _should_remember:
                     asyncio.create_task(extract_memories(user_text, response_text))
 
-                # TTS
+                # TTS — send response; abort cleanly if client disconnected
                 tts = strip_markdown_for_tts(response_text)
-                await ws.send_json({"type": "status", "state": "speaking"})
+                try:
+                    await ws.send_json({"type": "status", "state": "speaking"})
+                except (WebSocketDisconnect, RuntimeError):
+                    log.debug("Client disconnected before TTS — aborting response")
+                    break
                 audio = await synthesize_speech(tts)
-                if audio:
-                    await ws.send_json({"type": "audio", "data": base64.b64encode(audio).decode(), "text": response_text})
-                else:
-                    await ws.send_json({"type": "text", "text": response_text})
-                    await ws.send_json({"type": "status", "state": "idle"})
+                try:
+                    if audio:
+                        await ws.send_json({"type": "audio", "data": base64.b64encode(audio).decode(), "text": response_text})
+                    else:
+                        await ws.send_json({"type": "text", "text": response_text})
+                        await ws.send_json({"type": "status", "state": "idle"})
+                except (WebSocketDisconnect, RuntimeError):
+                    log.debug("Client disconnected while sending audio — moving on")
+                    break
                 log.info(f"JARVIS: {response_text}")
                 last_jarvis_response = response_text
 
+            except (WebSocketDisconnect, RuntimeError) as e:
+                # Client navigated away or closed tab — exit cleanly, no error spam
+                log.debug(f"WebSocket gone mid-response: {type(e).__name__}")
+                break
             except Exception as e:
                 log.error(f"Error: {e}", exc_info=True)
                 try:
@@ -2316,12 +2351,16 @@ async def voice_handler(ws: WebSocket):
                         await ws.send_json({"type": "audio", "data": base64.b64encode(audio).decode(), "text": fallback})
                     else:
                         await ws.send_json({"type": "audio", "data": "", "text": fallback})
-                    # Let client's audioPlayer.onFinished handle idle transition
+                except (WebSocketDisconnect, RuntimeError):
+                    pass  # Client gone — that's fine
                 except Exception:
                     pass
 
     except WebSocketDisconnect:
         log.info("Voice WebSocket disconnected")
+    except RuntimeError as e:
+        # "WebSocket is not connected" — client closed tab, not a real error
+        log.debug(f"WebSocket RuntimeError (client gone): {e}")
     except Exception as e:
         log.error(f"WebSocket error: {e}", exc_info=True)
     finally:

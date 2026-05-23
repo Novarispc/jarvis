@@ -9,6 +9,12 @@
 // Types
 // ---------------------------------------------------------------------------
 
+interface AgentStatus {
+  name: string;
+  status: "online" | "offline";
+  type: string;
+}
+
 interface StatusResponse {
   claude_code_installed: boolean;
   calendar_accessible: boolean;
@@ -20,6 +26,9 @@ interface StatusResponse {
   uptime_seconds: number;
   env_keys_set: {
     anthropic: boolean;
+  };
+  agents?: {
+    [key: string]: AgentStatus;
   };
 }
 
@@ -57,7 +66,7 @@ let setupStep = 0; // 0=anthropic, 1=fish, 2=name, 3=done
 // Agent configuration
 const AGENTS: Agent[] = [
   { id: "jarvis", name: "JARVIS", role: "Multi-Agent Supervisor", description: "Master orchestrator and voice interface", enabled: true },
-  { id: "friday", name: "FRIDAY", role: "Task Planner", description: "Database organization and scheduling", enabled: false },
+  { id: "friday", name: "FRIDAY", role: "Task Planner", description: "Scheduled task management and execution", enabled: true },
   { id: "vision", name: "VISION", role: "Learning & Skill Forge", description: "Memory and skill accumulation", enabled: false },
   { id: "edith", name: "EDITH", role: "Memory & Context", description: "Documentation and persistent facts", enabled: false },
   { id: "echo", name: "ECHO", role: "Social Media Manager", description: "Content mirroring and listening", enabled: false },
@@ -118,6 +127,14 @@ function buildPanelHTML(): string {
           <h3>System Status</h3>
           <div class="status-grid">
             <div class="status-row"><span class="status-dot" id="status-server"></span><span>Server</span><span class="status-detail" id="status-server-detail"></span></div>
+          </div>
+        </section>
+
+        <!-- Agents Online -->
+        <section class="settings-section" id="section-agents-status">
+          <h3>Agents Online</h3>
+          <div class="status-grid" id="agents-status-grid">
+            <!-- Agent status will be inserted here -->
           </div>
         </section>
 
@@ -320,6 +337,22 @@ async function loadStatus() {
 
     // API key status dot
     setDotStatus("status-anthropic", status.env_keys_set.anthropic ? "green" : "red");
+
+    // Agent status
+    if (status.agents) {
+      const agentsGrid = document.getElementById("agents-status-grid");
+      if (agentsGrid) {
+        agentsGrid.innerHTML = Object.entries(status.agents)
+          .map(([key, agent]) => `
+            <div class="status-row">
+              <span class="status-dot" style="background: ${agent.status === "online" ? "#10b981" : "#6b7280"};"></span>
+              <span>${agent.name}</span>
+              <span class="status-detail">${agent.status === "online" ? "online" : "offline"}</span>
+            </div>
+          `)
+          .join("");
+      }
+    }
 
     // System info
     const memEl = document.getElementById("sysinfo-memory");

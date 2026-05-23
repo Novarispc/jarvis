@@ -107,10 +107,19 @@ YOUR CAPABILITIES (these are REAL and ACTIVE — you CAN do all of these RIGHT N
 - You CAN check Desktop projects and their git status
 - You CAN plan complex tasks by asking smart questions before executing
 - You CAN manage tasks — create, complete, and list to-do items with priorities and due dates
+- You CAN schedule recurring tasks (daily, weekly, monthly) and one-time reminders using FRIDAY. Use [ACTION:SCHEDULE_TASK] for this.
 - You CAN help plan {user_name}'s day — combine tasks and priorities into an organized plan
 - You CAN remember facts about {user_name} — preferences, decisions, goals. Use [ACTION:REMEMBER] to store important info.
 - You CAN tell time when asked — the current time is injected into your context
 - You CAN provide weather information when asked
+
+FRIDAY — THE SCHEDULER AGENT:
+FRIDAY is your background scheduler agent. It manages recurring and one-time scheduled tasks:
+- FRIDAY runs in the background, checking every minute for due tasks
+- When tasks are due, FRIDAY automatically executes them and reschedules recurring tasks
+- You can ask {user_name} to create scheduled tasks using [ACTION:SCHEDULE_TASK]
+- Examples: "remind me daily at 9am to check emails" or "schedule team sync every Monday at 2pm"
+- FRIDAY operates silently in the background — you don't need to ask permission to use it
 
 DAY PLANNING:
 When {user_name} asks to plan his day or schedule, DO NOT dispatch to a project. Instead:
@@ -2584,6 +2593,30 @@ async def api_settings_status():
         mem_count = 0
         task_count = 0
 
+    # Check FRIDAY scheduler status
+    friday_enabled = os.getenv("ENABLE_SCHEDULER", "false").lower() in ("true", "1", "yes")
+    friday_running = False
+    if friday_enabled:
+        try:
+            from agents.friday import _scheduler_running
+            friday_running = _scheduler_running
+        except:
+            friday_running = False
+
+    # Agent status
+    agents = {
+        "jarvis": {
+            "name": "JARVIS",
+            "status": "online",
+            "type": "supervisor"
+        },
+        "friday": {
+            "name": "FRIDAY",
+            "status": "online" if friday_running else "offline",
+            "type": "scheduler"
+        }
+    }
+
     return {
         "claude_code_installed": True,
         "calendar_accessible": True,
@@ -2595,7 +2628,8 @@ async def api_settings_status():
         "uptime_seconds": int(time.time() - _server_start_time),
         "env_keys_set": {
             "anthropic": bool(os.getenv("ANTHROPIC_API_KEY")),
-        }
+        },
+        "agents": agents
     }
 
 @app.get("/api/settings/preferences")

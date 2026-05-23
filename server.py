@@ -2548,6 +2548,25 @@ async def api_settings_keys(body: KeyUpdate):
     _write_env_key(body.key_name, body.key_value)
     return {"success": True}
 
+@app.post("/api/synthesize")
+async def api_synthesize(body: dict):
+    """Synthesize speech for voice preview."""
+    text = body.get("text", "Testing voice synthesis.")
+    audio_bytes = await synthesize_speech(text)
+    if audio_bytes:
+        encoded = base64.b64encode(audio_bytes).decode()
+        return {"audio": encoded}
+    return {"error": "Synthesis failed"}, 500
+
+@app.post("/api/settings/agents")
+async def api_settings_agents(body: dict):
+    """Save multi-agent configuration."""
+    agents = body.get("agents", {})
+    # Store in memory or .env as needed
+    # For now, just acknowledge receipt
+    log.info(f"Agent configuration: {agents}")
+    return {"success": True}
+
 @app.post("/api/settings/test-llm")
 async def api_test_llm(body: KeyTest):
     try:

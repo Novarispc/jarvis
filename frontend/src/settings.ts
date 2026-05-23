@@ -30,6 +30,21 @@ interface PreferencesResponse {
   orb_color?: string;
 }
 
+interface Agent {
+  id: string;
+  name: string;
+  role: string;
+  description: string;
+  enabled: boolean;
+  apiKeyField?: string;
+}
+
+interface FutureAgent {
+  name: string;
+  role: string;
+  description: string;
+}
+
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
@@ -38,6 +53,28 @@ let panelEl: HTMLElement | null = null;
 let isOpen = false;
 let isFirstTimeSetup = false;
 let setupStep = 0; // 0=anthropic, 1=fish, 2=name, 3=done
+
+// Agent configuration
+const AGENTS: Agent[] = [
+  { id: "jarvis", name: "JARVIS", role: "Multi-Agent Supervisor", description: "Master orchestrator and voice interface", enabled: true },
+  { id: "friday", name: "FRIDAY", role: "Task Planner", description: "Database organization and scheduling", enabled: false },
+  { id: "vision", name: "VISION", role: "Learning & Skill Forge", description: "Memory and skill accumulation", enabled: false },
+  { id: "edith", name: "EDITH", role: "Memory & Context", description: "Documentation and persistent facts", enabled: false },
+  { id: "echo", name: "ECHO", role: "Social Media Manager", description: "Content mirroring and listening", enabled: false },
+  { id: "nova", name: "NOVA", role: "PC Launcher", description: "Application and dependency management", enabled: false },
+  { id: "hulk", name: "HULK", role: "Task Completion Reporter", description: "Testing and error handling", enabled: false },
+  { id: "ultron", name: "ULTRON", role: "Frontend & Backend", description: "UI rendering and logic engine", enabled: false },
+  { id: "thor", name: "THOR", role: "Code Review", description: "Code critique and quality gates", enabled: false },
+  { id: "shield", name: "S.H.I.E.L.D.", role: "Network & API Gateway", description: "Request routing and load balancing", enabled: false },
+  { id: "spider", name: "SPIDER", role: "Web Research", description: "Web scraping and data extraction", enabled: false },
+  { id: "dume", name: "DUM-E", role: "File Organizer", description: "Desktop cleanup and archive management", enabled: false },
+];
+
+const FUTURE_AGENTS: FutureAgent[] = [
+  { name: "PEPPER POTTS", role: "Business Intelligence", description: "Strategic planning and ROI analysis" },
+  { name: "HAPPY HOGAN", role: "Security Monitor", description: "System security and threat detection" },
+  { name: "RHODEY", role: "Hardware Interface", description: "Device management and peripherals" },
+];
 
 // ---------------------------------------------------------------------------
 // API helpers
@@ -129,8 +166,39 @@ function buildPanelHTML(): string {
             <textarea id="input-calendar-accounts" rows="2" placeholder="auto (or comma-separated emails)"></textarea>
           </div>
 
+          <div class="settings-actions">
+            <button class="settings-btn primary" id="btn-save-prefs">Save Preferences</button>
+          </div>
+        </section>
+
+        <!-- Voice Options -->
+        <section class="settings-section" id="section-voice">
+          <h3>Voice Options</h3>
+
           <div class="settings-field">
-            <label>Orb Color</label>
+            <label>TTS Voice</label>
+            <div class="settings-input-row">
+              <select id="input-tts-voice">
+                <option value="en-GB-RyanNeural">British Male (Default)</option>
+                <option value="en-US-AriaNeural">American Female</option>
+                <option value="en-AU-NatashaNeural">Australian Female</option>
+                <option value="en-IN-NeerjaNeural">Indian Female</option>
+              </select>
+              <button class="settings-btn" id="btn-preview-voice">Preview</button>
+            </div>
+          </div>
+
+          <div class="settings-actions">
+            <button class="settings-btn primary" id="btn-save-voice">Save Voice</button>
+          </div>
+        </section>
+
+        <!-- Color Customization -->
+        <section class="settings-section" id="section-color">
+          <h3>Orb Color</h3>
+
+          <div class="settings-field">
+            <label>Preset Colors</label>
             <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 8px;">
               <button class="color-swatch" id="color-blue" style="background: #4ca8e8;" title="Blue (default)"></button>
               <button class="color-swatch" id="color-cyan" style="background: #00d9ff;" title="Cyan"></button>
@@ -143,8 +211,40 @@ function buildPanelHTML(): string {
             </div>
           </div>
 
+          <div class="settings-field">
+            <label>Custom Hex Color</label>
+            <div class="settings-input-row">
+              <input type="text" id="input-hex-color" placeholder="#4ca8e8" maxlength="7" />
+              <span id="hex-preview" style="width: 30px; height: 30px; background: #4ca8e8; border-radius: 4px; border: 1px solid #666;"></span>
+            </div>
+          </div>
+
           <div class="settings-actions">
-            <button class="settings-btn primary" id="btn-save-prefs">Save Preferences</button>
+            <button class="settings-btn primary" id="btn-save-color">Save Color</button>
+          </div>
+        </section>
+
+        <!-- Agent Configuration -->
+        <section class="settings-section" id="section-agents">
+          <h3>Multi-Agent System</h3>
+          <p style="font-size: 12px; color: #999; margin-bottom: 16px;">Enable or disable AI agents that enhance JARVIS capabilities.</p>
+
+          <div id="agents-list" style="display: flex; flex-direction: column; gap: 12px;">
+            <!-- Agent items will be inserted here -->
+          </div>
+
+          <div class="settings-actions">
+            <button class="settings-btn primary" id="btn-save-agents">Save Agent Configuration</button>
+          </div>
+        </section>
+
+        <!-- Future Agents -->
+        <section class="settings-section" id="section-future-agents">
+          <h3>Future Agents (Coming Soon)</h3>
+          <p style="font-size: 12px; color: #999; margin-bottom: 16px;">Additional agents planned for future releases.</p>
+
+          <div id="future-agents-list" style="display: flex; flex-direction: column; gap: 12px;">
+            <!-- Future agent items will be inserted here -->
           </div>
         </section>
 
@@ -194,6 +294,40 @@ function formatUptime(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   return `${h}h ${m}m`;
+}
+
+function renderAgentsList() {
+  const container = document.getElementById("agents-list");
+  if (!container) return;
+
+  container.innerHTML = AGENTS.map(agent => `
+    <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 6px; border: 1px solid rgba(255,255,255,0.1);">
+      <div style="flex: 1;">
+        <div style="font-weight: 600; margin-bottom: 4px;">${agent.name}</div>
+        <div style="font-size: 11px; color: #aaa;">${agent.role}</div>
+        <div style="font-size: 11px; color: #777; margin-top: 2px;">${agent.description}</div>
+      </div>
+      <div style="margin-left: 12px;">
+        <input type="checkbox" id="agent-${agent.id}" ${agent.enabled ? "checked" : ""} ${agent.id === "jarvis" ? "disabled" : ""} style="cursor: pointer; width: 20px; height: 20px;" />
+      </div>
+    </div>
+  `).join("");
+}
+
+function renderFutureAgentsList() {
+  const container = document.getElementById("future-agents-list");
+  if (!container) return;
+
+  container.innerHTML = FUTURE_AGENTS.map(agent => `
+    <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px; background: rgba(255,255,255,0.02); border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); opacity: 0.7;">
+      <div style="flex: 1;">
+        <div style="font-weight: 600; margin-bottom: 4px;">${agent.name}</div>
+        <div style="font-size: 11px; color: #aaa;">${agent.role}</div>
+        <div style="font-size: 11px; color: #777; margin-top: 2px;">${agent.description}</div>
+      </div>
+      <div style="margin-left: 12px; font-size: 11px; color: #666; padding: 6px 12px; background: rgba(255,255,255,0.1); border-radius: 4px;">Coming Soon</div>
+    </div>
+  `).join("");
 }
 
 async function loadStatus() {
@@ -249,6 +383,30 @@ async function loadPreferences() {
   } catch (e) {
     console.error("[settings] failed to load preferences:", e);
   }
+}
+
+async function synthesizeSpeech(text: string): Promise<string | null> {
+  try {
+    const res = await fetch("/api/synthesize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    const data = await res.json();
+    return data.audio || null;
+  } catch (e) {
+    console.error("[settings] TTS synthesis failed:", e);
+    return null;
+  }
+}
+
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes.buffer;
 }
 
 function wireEvents() {
@@ -320,6 +478,67 @@ function wireEvents() {
     await apiPost("/api/settings/preferences", { user_name, honorific, calendar_accounts, orb_color });
     console.log("[settings] Saved preferences including color:", orb_color);
     await loadStatus();
+  });
+
+  // Voice preview
+  document.getElementById("btn-preview-voice")?.addEventListener("click", async () => {
+    const voiceSelect = document.getElementById("input-tts-voice") as HTMLSelectElement;
+    const voice = voiceSelect?.value || "en-GB-RyanNeural";
+    try {
+      const audio = await synthesizeSpeech(`Testing voice with ${voice.split('-')[1]} accent.`);
+      if (audio) {
+        const audioData = base64ToArrayBuffer(audio);
+        const audioContext = new (window as any).AudioContext();
+        const source = audioContext.createBufferSource();
+        const decoded = await audioContext.decodeAudioData(audioData);
+        source.buffer = decoded;
+        source.connect(audioContext.destination);
+        source.start(0);
+      }
+    } catch (e) {
+      console.error("[settings] Voice preview failed:", e);
+    }
+  });
+
+  // Voice save
+  document.getElementById("btn-save-voice")?.addEventListener("click", async () => {
+    const voiceSelect = document.getElementById("input-tts-voice") as HTMLSelectElement;
+    const voice = voiceSelect?.value || "en-GB-RyanNeural";
+    await apiPost("/api/settings/keys", { key_name: "EDGE_TTS_VOICE", key_value: voice });
+    console.log("[settings] Saved voice:", voice);
+  });
+
+  // Hex color input with live preview
+  const hexInput = document.getElementById("input-hex-color") as HTMLInputElement;
+  const hexPreview = document.getElementById("hex-preview") as HTMLElement;
+  hexInput?.addEventListener("input", (e) => {
+    const value = (e.target as HTMLInputElement).value;
+    if (/^#[0-9A-F]{6}$/i.test(value)) {
+      hexPreview.style.background = value;
+    }
+  });
+
+  // Color save
+  document.getElementById("btn-save-color")?.addEventListener("click", () => {
+    const hexInput = document.getElementById("input-hex-color") as HTMLInputElement;
+    let color = hexInput?.value.trim() || "#4ca8e8";
+    if (!/^#[0-9A-F]{6}$/i.test(color)) {
+      color = "#4ca8e8";
+    }
+    document.documentElement.style.setProperty("--orb-color", color);
+    localStorage.setItem("jarvis-orb-color", color);
+    console.log("[settings] Saved custom color:", color);
+  });
+
+  // Agent save
+  document.getElementById("btn-save-agents")?.addEventListener("click", async () => {
+    const agentStates: Record<string, boolean> = {};
+    AGENTS.forEach(agent => {
+      const checkbox = document.getElementById(`agent-${agent.id}`) as HTMLInputElement;
+      agentStates[agent.id] = checkbox?.checked || agent.id === "jarvis";
+    });
+    await apiPost("/api/settings/agents", { agents: agentStates });
+    console.log("[settings] Saved agent configuration:", agentStates);
   });
 
   // Setup next button
@@ -406,6 +625,10 @@ export async function openSettings() {
   requestAnimationFrame(() => {
     panelEl!.classList.add("open");
   });
+
+  // Render agent lists
+  renderAgentsList();
+  renderFutureAgentsList();
 
   // Load data
   const status = await loadStatus();

@@ -20,9 +20,6 @@ interface StatusResponse {
   uptime_seconds: number;
   env_keys_set: {
     anthropic: boolean;
-    fish_audio: boolean;
-    fish_voice_id: boolean;
-    user_name: string;
   };
 }
 
@@ -30,6 +27,7 @@ interface PreferencesResponse {
   user_name: string;
   honorific: string;
   calendar_accounts: string;
+  orb_color?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -91,23 +89,6 @@ function buildPanelHTML(): string {
             </div>
           </div>
 
-          <div class="settings-field">
-            <label>Fish Audio API Key</label>
-            <div class="settings-input-row">
-              <input type="password" id="input-fish-key" placeholder="Fish Audio key..." />
-              <button class="settings-btn" id="btn-test-fish">Test</button>
-              <span class="status-dot" id="status-fish"></span>
-            </div>
-          </div>
-
-          <div class="settings-field">
-            <label>Fish Voice ID</label>
-            <div class="settings-input-row">
-              <input type="text" id="input-fish-voice-id" placeholder="612b878b113047d9a770c069c8b4fdfe" />
-              <button class="settings-btn" id="btn-save-voice-id">Save</button>
-            </div>
-          </div>
-
           <div class="settings-actions">
             <button class="settings-btn primary" id="btn-save-keys">Save Keys</button>
           </div>
@@ -146,6 +127,20 @@ function buildPanelHTML(): string {
           <div class="settings-field">
             <label>Calendar Accounts</label>
             <textarea id="input-calendar-accounts" rows="2" placeholder="auto (or comma-separated emails)"></textarea>
+          </div>
+
+          <div class="settings-field">
+            <label>Orb Color</label>
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 8px;">
+              <button class="color-swatch" id="color-blue" style="background: #4ca8e8;" title="Blue (default)"></button>
+              <button class="color-swatch" id="color-cyan" style="background: #00d9ff;" title="Cyan"></button>
+              <button class="color-swatch" id="color-purple" style="background: #a855f7;" title="Purple"></button>
+              <button class="color-swatch" id="color-pink" style="background: #ec4899;" title="Pink"></button>
+              <button class="color-swatch" id="color-green" style="background: #10b981;" title="Green"></button>
+              <button class="color-swatch" id="color-orange" style="background: #f97316;" title="Orange"></button>
+              <button class="color-swatch" id="color-red" style="background: #ef4444;" title="Red"></button>
+              <button class="color-swatch" id="color-yellow" style="background: #eab308;" title="Yellow"></button>
+            </div>
           </div>
 
           <div class="settings-actions">
@@ -214,9 +209,8 @@ async function loadStatus() {
     const serverDetail = document.getElementById("status-server-detail");
     if (serverDetail) serverDetail.textContent = `port ${status.server_port} | up ${formatUptime(status.uptime_seconds)}`;
 
-    // API key status dots
+    // API key status dot
     setDotStatus("status-anthropic", status.env_keys_set.anthropic ? "green" : "red");
-    setDotStatus("status-fish", status.env_keys_set.fish_audio ? "green" : "red");
 
     // System info
     const memEl = document.getElementById("sysinfo-memory");
@@ -245,6 +239,13 @@ async function loadPreferences() {
     if (nameEl) nameEl.value = prefs.user_name || "";
     if (honEl) honEl.value = prefs.honorific || "sir";
     if (calEl) calEl.value = prefs.calendar_accounts || "auto";
+
+    // Restore saved color
+    if (prefs.orb_color) {
+      localStorage.setItem("jarvis-orb-color", prefs.orb_color);
+      document.documentElement.style.setProperty("--orb-color", prefs.orb_color);
+      console.log("[settings] Restored color:", prefs.orb_color);
+    }
   } catch (e) {
     console.error("[settings] failed to load preferences:", e);
   }
@@ -258,23 +259,11 @@ function wireEvents() {
   // Save keys
   document.getElementById("btn-save-keys")?.addEventListener("click", async () => {
     const anthropicKey = (document.getElementById("input-anthropic-key") as HTMLInputElement).value.trim();
-    const fishKey = (document.getElementById("input-fish-key") as HTMLInputElement).value.trim();
 
     if (anthropicKey) {
       await apiPost("/api/settings/keys", { key_name: "ANTHROPIC_API_KEY", key_value: anthropicKey });
     }
-    if (fishKey) {
-      await apiPost("/api/settings/keys", { key_name: "FISH_API_KEY", key_value: fishKey });
-    }
     await loadStatus();
-  });
-
-  // Save voice ID
-  document.getElementById("btn-save-voice-id")?.addEventListener("click", async () => {
-    const voiceId = (document.getElementById("input-fish-voice-id") as HTMLInputElement).value.trim();
-    if (voiceId) {
-      await apiPost("/api/settings/keys", { key_name: "FISH_VOICE_ID", key_value: voiceId });
-    }
   });
 
   // Test Anthropic
@@ -282,31 +271,54 @@ function wireEvents() {
     setDotStatus("status-anthropic", "yellow");
     const key = (document.getElementById("input-anthropic-key") as HTMLInputElement).value.trim();
     try {
-      const result = await apiPost<{ valid: boolean; error?: string }>("/api/settings/test-anthropic", { key_value: key || undefined });
+      const result = await apiPost<{ valid: boolean; error?: string }>("/api/settings/test-llm", { key_value: key || undefined });
       setDotStatus("status-anthropic", result.valid ? "green" : "red");
     } catch {
       setDotStatus("status-anthropic", "red");
     }
   });
 
-  // Test Fish
-  document.getElementById("btn-test-fish")?.addEventListener("click", async () => {
-    setDotStatus("status-fish", "yellow");
-    const key = (document.getElementById("input-fish-key") as HTMLInputElement).value.trim();
-    try {
-      const result = await apiPost<{ valid: boolean; error?: string }>("/api/settings/test-fish", { key_value: key || undefined });
-      setDotStatus("status-fish", result.valid ? "green" : "red");
-    } catch {
-      setDotStatus("status-fish", "red");
-    }
+  // Color swatches
+  const colorMap: Record<string, string> = {
+    "color-blue": "#4ca8e8",
+    "color-cyan": "#00d9ff",
+    "color-purple": "#a855f7",
+    "color-pink": "#ec4899",
+    "color-green": "#10b981",
+    "color-orange": "#f97316",
+    "color-red": "#ef4444",
+    "color-yellow": "#eab308",
+  };
+
+  Object.entries(colorMap).forEach(([id, color]) => {
+    document.getElementById(id)?.addEventListener("click", () => {
+      // Update CSS variable for orb color
+      document.documentElement.style.setProperty("--orb-color", color);
+      // Save to localStorage
+      localStorage.setItem("jarvis-orb-color", color);
+      // Visual feedback - add checked state
+      document.querySelectorAll(".color-swatch").forEach(btn => btn.classList.remove("color-selected"));
+      (document.getElementById(id) as HTMLElement)?.classList.add("color-selected");
+    });
   });
+
+  // Load saved color on init
+  const savedColor = localStorage.getItem("jarvis-orb-color") || "#4ca8e8";
+  document.documentElement.style.setProperty("--orb-color", savedColor);
+  for (const [id, color] of Object.entries(colorMap)) {
+    if (color === savedColor) {
+      (document.getElementById(id) as HTMLElement)?.classList.add("color-selected");
+    }
+  }
 
   // Save preferences
   document.getElementById("btn-save-prefs")?.addEventListener("click", async () => {
     const user_name = (document.getElementById("input-user-name") as HTMLInputElement).value.trim();
     const honorific = (document.getElementById("input-honorific") as HTMLSelectElement).value;
     const calendar_accounts = (document.getElementById("input-calendar-accounts") as HTMLTextAreaElement).value.trim();
-    await apiPost("/api/settings/preferences", { user_name, honorific, calendar_accounts });
+    const orb_color = localStorage.getItem("jarvis-orb-color") || "#4ca8e8";
+    await apiPost("/api/settings/preferences", { user_name, honorific, calendar_accounts, orb_color });
+    console.log("[settings] Saved preferences including color:", orb_color);
     await loadStatus();
   });
 

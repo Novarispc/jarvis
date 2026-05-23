@@ -1,3 +1,7 @@
+:root {
+  --orb-color: #4ca8e8;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -416,4 +420,37 @@ html, body {
   padding: 16px 24px;
   display: flex;
   justify-content: flex-end;
+}
+
+/* Color swatches */
+.color-swatch {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+}
+
+.color-swatch:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: scale(1.05);
+}
+
+.color-swatch.color-selected {
+  border-color: rgba(255, 255, 255, 0.6);
+  box-shadow: 0 0 12px currentColor, inset 0 0 0 2px rgba(0, 0, 0, 0.3);
+}
+
+.color-swatch.color-selected::after {
+  content: "✓";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: white;
+  font-weight: bold;
+  font-size: 16px;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
 }

@@ -5,6 +5,9 @@ import asyncio
 import os
 import sys
 
+# Windows guard — Apple Calendar is macOS-only
+_IS_WINDOWS = sys.platform == "win32"
+
 # Set CALENDAR_ACCOUNTS env var to a comma-separated list of calendar names/emails,
 # or leave empty to auto-discover all calendars from Apple Calendar.
 _calendar_accounts_env = os.getenv("CALENDAR_ACCOUNTS", "")
@@ -49,6 +52,8 @@ end tell
 
 
 async def fetch_calendar(cal_name: str, timeout: float = 5.0) -> str:
+    if _IS_WINDOWS:
+        return ""
     script = SCRIPT_TEMPLATE.replace("{cal_name}", cal_name)
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -70,6 +75,8 @@ async def fetch_calendar(cal_name: str, timeout: float = 5.0) -> str:
 
 async def discover_calendars() -> list[str]:
     """Auto-discover all calendar names from Apple Calendar."""
+    if _IS_WINDOWS:
+        return []
     try:
         proc = await asyncio.create_subprocess_exec(
             "osascript", "-e",

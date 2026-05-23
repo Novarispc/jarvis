@@ -29,6 +29,12 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
   const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
   camera.position.z = 80;
 
+  // Get orb color from CSS variable, fallback to default blue
+  const orbColorHex = getComputedStyle(document.documentElement).getPropertyValue("--orb-color").trim() || "#4ca8e8";
+  const baseColor = new THREE.Color(orbColorHex);
+  const thinkingColor = baseColor.clone().lerp(new THREE.Color(0xffffff), 0.3);
+  const speakingColor = baseColor.clone().lerp(new THREE.Color(0xffffff), 0.15);
+
   // ── Particles ──
   const geo = new THREE.BufferGeometry();
   const pos = new Float32Array(N * 3);
@@ -48,7 +54,7 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
   geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
 
   const mat = new THREE.PointsMaterial({
-    color: 0x4ca8e8, size: 0.4, transparent: true, opacity: 0.6,
+    color: baseColor, size: 0.4, transparent: true, opacity: 0.6,
     sizeAttenuation: true, blending: THREE.AdditiveBlending, depthWrite: false,
   });
 
@@ -63,7 +69,7 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
   lineGeo.setDrawRange(0, 0);
 
   const lineMat = new THREE.LineBasicMaterial({
-    color: 0x4ca8e8, transparent: true, opacity: 0.0,
+    color: baseColor, transparent: true, opacity: 0.0,
     blending: THREE.AdditiveBlending, depthWrite: false,
   });
 
@@ -117,7 +123,9 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
   let freqData = new Uint8Array(64);
   let bass = 0, mid = 0;
 
-  const clock = new THREE.Clock();
+  // Use native performance.now() — avoids the THREE.Clock deprecation warning
+  const _clockStart = performance.now();
+  const clock = { getElapsedTime: () => (performance.now() - _clockStart) / 1000 };
 
   function animate() {
     if (destroyed) return;
@@ -302,9 +310,9 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
     mat.opacity = currentBright + bass * 0.08;
     mat.size = currentSize + bass * 0.05;
 
-    if (state === "thinking") { mat.color.lerp(new THREE.Color(0x6ec4ff), 0.015); lineMat.color.lerp(new THREE.Color(0x6ec4ff), 0.015); }
-    else if (state === "speaking") { mat.color.lerp(new THREE.Color(0x5ab8f0), 0.015); lineMat.color.lerp(new THREE.Color(0x5ab8f0), 0.015); }
-    else { mat.color.lerp(new THREE.Color(0x4ca8e8), 0.015); lineMat.color.lerp(new THREE.Color(0x4ca8e8), 0.015); }
+    if (state === "thinking") { mat.color.lerp(thinkingColor, 0.015); lineMat.color.lerp(thinkingColor, 0.015); }
+    else if (state === "speaking") { mat.color.lerp(speakingColor, 0.015); lineMat.color.lerp(speakingColor, 0.015); }
+    else { mat.color.lerp(baseColor, 0.015); lineMat.color.lerp(baseColor, 0.015); }
 
     camera.position.x = Math.sin(t * 0.02) * 5;
     camera.position.y = Math.cos(t * 0.03) * 3;

@@ -1,3 +1,4 @@
+import os
 """
 JARVIS Memory & Planning — persistent context, tasks, notes, and smart routing.
 
@@ -402,30 +403,43 @@ def format_plan_for_voice(tasks: list[dict], events: list[dict]) -> str:
 # Memory extraction — learn from conversations
 # ---------------------------------------------------------------------------
 
-async def extract_memories(user_text: str, jarvis_response: str, anthropic_client) -> list[str]:
+async def extract_memories(user_text: str, jarvis_response: str) -> list[str]:
     """After a conversation turn, extract any facts worth remembering.
 
     Uses Haiku to decide if anything in the exchange is worth storing.
     Returns list of memories stored.
     """
-    if not anthropic_client or len(user_text) < 15:
+    if len(user_text) < 15:
         return []
 
     try:
-        response = await anthropic_client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=200,
-            system=(
-                "Extract facts worth remembering from this conversation. "
-                "Only extract CONCRETE facts: preferences, decisions, names, dates, plans, goals. "
-                "NOT opinions, greetings, or casual chat. "
-                "Return JSON array of objects: [{\"type\": \"fact|preference|project|person|decision\", \"content\": \"...\", \"importance\": 1-10}] "
-                "Return [] if nothing worth remembering. Be very selective."
-            ),
-            messages=[{"role": "user", "content": f"User: {user_text}\nJARVIS: {jarvis_response}"}],
-        )
-
-        text = response.content[0].text.strip()
+        import httpx as _httpx
+        ollama_base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        ollama_model = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
+        ollama_key = os.getenv("OLLAMA_API_KEY", "")
+        headers = {"Content-Type": "application/json"}
+        if ollama_key:
+            headers["Authorization"] = f"Bearer {ollama_key}"
+        url = f"{ollama_base.rstrip('/')}/v1/chat/completions"
+        payload = {
+            "model": ollama_model,
+            "messages": [
+                {"role": "system", "content": (
+                    "Extract facts worth remembering from this conversation. "
+                    "Only extract CONCRETE facts: preferences, decisions, names, dates, plans, goals. "
+                    "NOT opinions, greetings, or casual chat. "
+                    "Return JSON array of objects: [{\"type\": \"fact|preference|project|person|decision\", \"content\": \"...\", \"importance\": 1-10}] "
+                    "Return [] if nothing worth remembering. Be very selective."
+                )},
+                {"role": "user", "content": f"User: {user_text}\nJARVIS: {jarvis_response}"},
+            ],
+            "max_tokens": 200,
+            "stream": False,
+        }
+        async with _httpx.AsyncClient(timeout=_httpx.Timeout(5.0, read=30.0)) as http:
+            resp = await http.post(url, json=payload, headers=headers)
+            resp.raise_for_status()
+        text = resp.json()["choices"][0]["message"]["content"].strip()
         # Parse JSON
         if text.startswith("["):
             items = json.loads(text)

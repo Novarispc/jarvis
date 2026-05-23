@@ -34,6 +34,17 @@ export function createVoiceInput(
 
   let shouldListen = false;
   let paused = false;
+  let restartTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function scheduleRestart(delayMs = 300) {
+    if (restartTimer) return;
+    restartTimer = setTimeout(() => {
+      restartTimer = null;
+      if (shouldListen && !paused) {
+        try { recognition.start(); } catch { /* already started */ }
+      }
+    }, delayMs);
+  }
 
   recognition.onresult = (event: any) => {
     for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -45,23 +56,18 @@ export function createVoiceInput(
   };
 
   recognition.onend = () => {
-    if (shouldListen && !paused) {
-      try {
-        recognition.start();
-      } catch {
-        // Already started
-      }
-    }
+    if (shouldListen && !paused) scheduleRestart(300);
   };
 
   recognition.onerror = (event: any) => {
     if (event.error === "not-allowed") {
       onError("Microphone access denied. Please allow microphone access.");
       shouldListen = false;
-    } else if (event.error === "no-speech") {
-      // Normal, just restart
-    } else if (event.error === "aborted") {
-      // Expected during pause
+    } else if (event.error === "network") {
+      // Google's STT rejected a too-fast reconnect — back off and retry
+      scheduleRestart(1000);
+    } else if (event.error === "no-speech" || event.error === "aborted") {
+      // Normal/expected — onend will handle restart
     } else {
       console.warn("[voice] recognition error:", event.error);
     }
@@ -80,10 +86,12 @@ export function createVoiceInput(
     stop() {
       shouldListen = false;
       paused = false;
+      if (restartTimer) { clearTimeout(restartTimer); restartTimer = null; }
       recognition.stop();
     },
     pause() {
       paused = true;
+      if (restartTimer) { clearTimeout(restartTimer); restartTimer = null; }
       recognition.stop();
     },
     resume() {

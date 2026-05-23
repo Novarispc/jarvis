@@ -10,19 +10,27 @@ import asyncio
 import base64
 import json
 import logging
+import sys
 import tempfile
 from pathlib import Path
 
 log = logging.getLogger("jarvis.screen")
 
+# Windows guard
+_IS_WINDOWS = sys.platform == "win32"
+
 
 async def get_active_windows() -> list[dict]:
     """Get list of visible windows with app name, window title, and position.
 
-    Uses AppleScript + System Events to enumerate windows.
+    On macOS: Uses AppleScript + System Events.
+    On Windows: Uses PowerShell Get-Process to list windows with titles.
     Returns list of {"app": str, "title": str, "frontmost": bool}.
     """
-    # Use a simpler approach that's more permission-friendly
+    if _IS_WINDOWS:
+        return await _get_active_windows_windows()
+
+    # macOS path
     script = """
 set windowList to ""
 tell application "System Events"
@@ -78,8 +86,47 @@ return windowList
         return []
 
 
+async def _get_active_windows_windows() -> list[dict]:
+    """Windows fallback: use PowerShell to list processes with visible windows."""
+    ps_cmd = (
+        "Get-Process | Where-Object {$_.MainWindowTitle -ne ''} | "
+        "Select-Object ProcessName, MainWindowTitle | "
+        "ForEach-Object { $_.ProcessName + '|||' + $_.MainWindowTitle }"
+    )
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "powershell", "-NoProfile", "-Command", ps_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=8)
+        windows = []
+        first = True
+        for line in stdout.decode().strip().split("\n"):
+            parts = line.strip().split("|||")
+            if len(parts) >= 2 and parts[0].strip():
+                windows.append({
+                    "app": parts[0].strip(),
+                    "title": parts[1].strip(),
+                    "frontmost": first,  # first result is usually the foreground app
+                })
+                first = False
+        return windows
+    except asyncio.TimeoutError:
+        log.warning("get_active_windows (Windows) timed out")
+        return []
+    except Exception as e:
+        log.warning(f"get_active_windows (Windows) error: {e}")
+        return []
+
+
 async def get_running_apps() -> list[str]:
     """Get list of running application names (visible only)."""
+    if _IS_WINDOWS:
+        # On Windows, derive from get_active_windows
+        windows = await _get_active_windows_windows()
+        return list(dict.fromkeys(w["app"] for w in windows))
+
     script = """
 tell application "System Events"
     set appNames to name of every application process whose visible is true
@@ -108,12 +155,14 @@ end tell
 async def take_screenshot(display_only: bool = True) -> str | None:
     """Take a screenshot and return base64-encoded PNG.
 
-    Args:
-        display_only: If True, capture main display only. If False, all displays.
-
+    On macOS: uses screencapture.
+    On Windows: uses PowerShell with System.Windows.Forms.Screen.
     Returns:
         Base64-encoded PNG string, or None on failure.
     """
+    if _IS_WINDOWS:
+        return await _take_screenshot_windows()
+
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
         tmp_path = f.name
 
@@ -151,48 +200,52 @@ async def take_screenshot(display_only: bool = True) -> str | None:
             pass
 
 
-async def describe_screen(anthropic_client) -> str:
+async def _take_screenshot_windows() -> str | None:
+    """Windows screenshot via PowerShell + System.Drawing."""
+    import uuid
+    tmp_path = Path(tempfile.gettempdir()) / f"jarvis_shot_{uuid.uuid4().hex}.png"
+    ps_cmd = (
+        "Add-Type -AssemblyName System.Windows.Forms; "
+        "Add-Type -AssemblyName System.Drawing; "
+        "$screen = [System.Windows.Forms.Screen]::PrimaryScreen; "
+        "$bmp = New-Object System.Drawing.Bitmap($screen.Bounds.Width, $screen.Bounds.Height); "
+        "$g = [System.Drawing.Graphics]::FromImage($bmp); "
+        f"$g.CopyFromScreen($screen.Bounds.Location, [System.Drawing.Point]::Empty, $screen.Bounds.Size); "
+        f"$bmp.Save('{tmp_path}'); "
+        "$g.Dispose(); $bmp.Dispose()"
+    )
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "powershell", "-NoProfile", "-Command", ps_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await asyncio.wait_for(proc.communicate(), timeout=15)
+        if tmp_path.exists():
+            data = tmp_path.read_bytes()
+            log.info(f"Windows screenshot captured: {len(data)} bytes")
+            return base64.b64encode(data).decode()
+        log.warning("Windows screenshot: file not created")
+        return None
+    except asyncio.TimeoutError:
+        log.warning("Windows screenshot timed out")
+        return None
+    except Exception as e:
+        log.warning(f"Windows screenshot error: {e}")
+        return None
+    finally:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
+async def describe_screen() -> str:
     """Describe what's on the user's screen.
 
     Tries screenshot + vision first. Falls back to window list + LLM summary.
     """
-    # Try screenshot + vision
-    screenshot_b64 = await take_screenshot()
-    if screenshot_b64 and anthropic_client:
-        try:
-            response = await anthropic_client.messages.create(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=300,
-                system=(
-                    "You are JARVIS analyzing a screenshot of the user's desktop. "
-                    "Describe what you see concisely: which apps are open, what the user "
-                    "appears to be working on, any notable content visible. "
-                    "Be specific about app names, file names, URLs, code, or documents visible. "
-                    "2-4 sentences max. No markdown."
-                ),
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": "image/png",
-                                "data": screenshot_b64,
-                            },
-                        },
-                        {
-                            "type": "text",
-                            "text": "What's on my screen right now?",
-                        },
-                    ],
-                }],
-            )
-            return response.content[0].text
-        except Exception as e:
-            log.warning(f"Vision call failed, falling back to window list: {e}")
-
-    # Fallback: get window list and have LLM summarize
+    # Get window list for LLM summary
     windows = await get_active_windows()
     apps = await get_running_apps()
 
@@ -212,20 +265,9 @@ async def describe_screen(anthropic_client) -> str:
         if bg_apps:
             context_parts.append(f"Background apps: {', '.join(bg_apps)}")
 
-    if anthropic_client and context_parts:
-        try:
-            response = await anthropic_client.messages.create(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=100,
-                system=(
-                    "You are JARVIS. Given the user's open windows and apps, summarize "
-                    "what they appear to be working on in 1-2 sentences. Natural voice, no markdown."
-                ),
-                messages=[{"role": "user", "content": "Open windows:\n" + "\n".join(context_parts)}],
-            )
-            return response.content[0].text
-        except Exception:
-            pass
+    if context_parts:
+        # Plain text fallback — no LLM dependency for screen
+        pass
 
     # Raw fallback
     if windows:

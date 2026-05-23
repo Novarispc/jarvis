@@ -8,11 +8,15 @@ filter dates in Python. Results cached and refreshed in background.
 import asyncio
 import logging
 import os
+import sys
 import time as _time
 from datetime import datetime, timedelta
 from pathlib import Path
 
 log = logging.getLogger("jarvis.calendar")
+
+# Windows guard — Apple Calendar is macOS-only
+_IS_WINDOWS = sys.platform == "win32"
 
 # Calendars to scan — set CALENDAR_ACCOUNTS env var to a comma-separated list,
 # or leave empty to auto-discover ALL calendars from Apple Calendar.
@@ -47,7 +51,7 @@ end tell
 async def _ensure_calendar_running():
     """Launch Calendar.app if not already running."""
     global _calendar_launched
-    if _calendar_launched:
+    if _IS_WINDOWS or _calendar_launched:
         return
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -65,6 +69,8 @@ async def _ensure_calendar_running():
 
 async def _fetch_calendar_events(cal_name: str, timeout: float = 12.0) -> list[dict]:
     """Fetch all events from one calendar, filter to today in Python."""
+    if _IS_WINDOWS:
+        return []
     script = _BULK_SCRIPT.replace("{cal_name}", cal_name)
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -97,7 +103,11 @@ async def _fetch_calendar_events(cal_name: str, timeout: float = 12.0) -> list[d
             try:
                 parsed = _parse_applescript_date(date_str)
                 if parsed and parsed.date() == today_date:
-                    time_str = "ALL_DAY" if all_day else parsed.strftime("%-I:%M %p")
+                    # %-I is Linux/macOS only; use cross-platform approach
+                    if all_day:
+                        time_str = "ALL_DAY"
+                    else:
+                        time_str = parsed.strftime("%I:%M %p").lstrip("0") or "12:00 AM"
                     events.append({
                         "calendar": cal_name,
                         "title": title,
@@ -142,6 +152,9 @@ def _parse_applescript_date(s: str) -> datetime | None:
 async def refresh_cache():
     """Refresh the event cache. Called from background loop."""
     global _event_cache, _cache_time, USER_CALENDARS, _auto_discovered
+    if _IS_WINDOWS:
+        log.info("Calendar: Apple Calendar not available on Windows — skipping refresh")
+        return
     await _ensure_calendar_running()
 
     # Auto-discover calendars if none configured
@@ -208,6 +221,8 @@ async def get_next_event() -> dict | None:
 
 async def get_calendar_names() -> list[str]:
     """Get list of all calendar names."""
+    if _IS_WINDOWS:
+        return []
     await _ensure_calendar_running()
     try:
         proc = await asyncio.create_subprocess_exec(

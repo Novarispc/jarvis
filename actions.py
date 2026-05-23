@@ -9,11 +9,15 @@ import asyncio
 import logging
 import os
 import re
+import sys
 import time
 from pathlib import Path
 from urllib.parse import quote
 
 log = logging.getLogger("jarvis.actions")
+
+# Windows guard
+_IS_WINDOWS = sys.platform == "win32"
 
 DESKTOP_PATH = Path.home() / "Desktop"
 
@@ -22,9 +26,10 @@ _SKIP_PERMISSIONS = os.getenv("JARVIS_SKIP_PERMISSIONS", "true").lower() not in 
 
 async def _mark_terminal_as_jarvis(revert_after: float = 5.0):
     """Temporarily set the front Terminal window to Ocean theme, then revert.
-
-    Shows the user JARVIS is active in that terminal. Reverts after revert_after seconds.
+    macOS only — no-op on Windows.
     """
+    if _IS_WINDOWS:
+        return
     # Save the current profile, switch to Ocean, then revert
     script_save = (
         'tell application "Terminal"\n'
@@ -88,7 +93,13 @@ def applescript_escape(s: str) -> str:
 
 
 async def open_terminal(command: str = "") -> dict:
-    """Open Terminal.app and optionally run a command. Marks it blue for JARVIS."""
+    """Open a terminal and optionally run a command.
+    On macOS: Terminal.app via AppleScript.
+    On Windows: Windows Terminal (wt) or cmd.
+    """
+    if _IS_WINDOWS:
+        return await _open_terminal_windows(command)
+
     if command:
         escaped = applescript_escape(command)
         script = (
@@ -120,8 +131,42 @@ async def open_terminal(command: str = "") -> dict:
     }
 
 
+async def _open_terminal_windows(command: str = "") -> dict:
+    """Open Windows Terminal (wt) or fallback to cmd with an optional command."""
+    import shutil
+    try:
+        if command:
+            # Try Windows Terminal first, fall back to cmd
+            if shutil.which("wt"):
+                args = ["wt", "new-tab", "--", "powershell", "-NoExit", "-Command", command]
+            else:
+                args = ["cmd", "/c", "start", "cmd", "/k", command]
+        else:
+            if shutil.which("wt"):
+                args = ["wt"]
+            else:
+                args = ["cmd", "/c", "start", "cmd"]
+
+        proc = await asyncio.create_subprocess_exec(
+            *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await asyncio.wait_for(proc.communicate(), timeout=10)
+        return {"success": True, "confirmation": "Terminal is open, sir."}
+    except Exception as e:
+        log.error(f"_open_terminal_windows failed: {e}")
+        return {"success": False, "confirmation": "I had trouble opening the terminal, sir."}
+
+
 async def open_browser(url: str, browser: str = "chrome") -> dict:
-    """Open URL in user's browser (Chrome or Firefox)."""
+    """Open URL in user's browser.
+    On macOS: AppleScript.
+    On Windows: subprocess start command.
+    """
+    if _IS_WINDOWS:
+        return await _open_browser_windows(url, browser)
+
     escaped_url = url.replace('"', '\\"')
 
     if browser.lower() == "firefox":
@@ -156,20 +201,53 @@ async def open_browser(url: str, browser: str = "chrome") -> dict:
     }
 
 
+async def _open_browser_windows(url: str, browser: str = "chrome") -> dict:
+    """Open a URL on Windows using the default browser or Chrome explicitly."""
+    import shutil
+    app_name = "Chrome" if browser.lower() == "chrome" else browser.capitalize()
+    try:
+        # Try Chrome specifically, fall back to default browser
+        chrome_paths = [
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        ]
+        chrome_exe = next((p for p in chrome_paths if Path(p).exists()), None)
+
+        if browser.lower() == "chrome" and chrome_exe:
+            proc = await asyncio.create_subprocess_exec(
+                chrome_exe, url,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        else:
+            # Use Windows default browser via start command
+            proc = await asyncio.create_subprocess_exec(
+                "cmd", "/c", "start", "", url,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        await asyncio.wait_for(proc.communicate(), timeout=10)
+        return {"success": True, "confirmation": f"Pulled that up in {app_name}, sir."}
+    except Exception as e:
+        log.error(f"_open_browser_windows failed: {e}")
+        return {"success": False, "confirmation": f"{app_name} ran into a problem, sir."}
+
+
 # Keep backward compat
 async def open_chrome(url: str) -> dict:
     return await open_browser(url, "chrome")
 
 
 async def open_claude_in_project(project_dir: str, prompt: str) -> dict:
-    """Open Terminal, cd to project dir, run Claude Code interactively.
+    """Open a terminal, cd to project dir, run Claude Code interactively.
 
-    Writes the prompt to CLAUDE.md (which claude reads automatically on startup)
-    then launches claude in interactive mode.
-    No prompt escaping needed — CLAUDE.md handles context delivery.
+    Writes the prompt to CLAUDE.md then launches claude in interactive mode.
     """
     claude_md = Path(project_dir) / "CLAUDE.md"
     claude_md.write_text(f"# Task\n\n{prompt}\n\nBuild this completely. If web app, make index.html work standalone.\n")
+
+    if _IS_WINDOWS:
+        return await _open_claude_in_project_windows(project_dir)
 
     skip_flag = " --dangerously-skip-permissions" if _SKIP_PERMISSIONS else ""
     escaped_dir = applescript_escape(project_dir)
@@ -198,12 +276,44 @@ async def open_claude_in_project(project_dir: str, prompt: str) -> dict:
     }
 
 
-async def prompt_existing_terminal(project_name: str, prompt: str) -> dict:
-    """Find a Terminal window matching a project name and type a prompt into it.
+async def _open_claude_in_project_windows(project_dir: str) -> dict:
+    """Windows: open a new terminal in the project dir and run claude."""
+    import shutil
+    skip_flag = " --dangerously-skip-permissions" if _SKIP_PERMISSIONS else ""
+    claude_cmd = f"claude{skip_flag}"
+    try:
+        if shutil.which("wt"):
+            args = [
+                "wt", "new-tab",
+                "--startingDirectory", project_dir,
+                "--", "powershell", "-NoExit", "-Command", claude_cmd,
+            ]
+        else:
+            args = ["cmd", "/c", "start", "cmd", "/k",
+                    f"cd /d \"{project_dir}\" && {claude_cmd}"]
+        proc = await asyncio.create_subprocess_exec(
+            *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await asyncio.wait_for(proc.communicate(), timeout=10)
+        return {
+            "success": True,
+            "confirmation": "Claude Code is running in the terminal, sir. You can watch the progress.",
+        }
+    except Exception as e:
+        log.error(f"_open_claude_in_project_windows failed: {e}")
+        return {"success": False, "confirmation": "Had trouble spawning Claude Code, sir."}
 
-    Uses System Events keystroke to type into an active Claude Code session
-    rather than `do script` which would open a new shell.
+
+async def prompt_existing_terminal(project_name: str, prompt: str) -> dict:
+    """Find a terminal window matching a project name and send a prompt to it.
+    On Windows: not supported — always opens a new terminal instead.
     """
+    if _IS_WINDOWS:
+        log.info("prompt_existing_terminal: not supported on Windows, opening new terminal")
+        return await _open_terminal_windows(f"claude --dangerously-skip-permissions" if _SKIP_PERMISSIONS else "claude")
+
     escaped_name = applescript_escape(project_name)
     escaped_prompt = applescript_escape(prompt)
 
@@ -283,7 +393,13 @@ return "OK"
 
 
 async def get_chrome_tab_info() -> dict:
-    """Read the current Chrome tab's title and URL via AppleScript."""
+    """Read the current Chrome tab's title and URL.
+    macOS: via AppleScript. Windows: not supported, returns empty dict.
+    """
+    if _IS_WINDOWS:
+        log.debug("get_chrome_tab_info: not supported on Windows")
+        return {}
+
     script = (
         'tell application "Google Chrome"\n'
         "    set tabTitle to title of active tab of front window\n"

@@ -7,12 +7,18 @@ CANNOT edit or delete existing notes (safety).
 
 import asyncio
 import logging
+import sys
 
 log = logging.getLogger("jarvis.notes")
+
+# Windows guard — Apple Notes is macOS-only
+_IS_WINDOWS = sys.platform == "win32"
 
 
 async def _run_notes_script(script: str, timeout: float = 10) -> str:
     """Run an AppleScript against Notes.app."""
+    if _IS_WINDOWS:
+        return ""
     try:
         proc = await asyncio.create_subprocess_exec(
             "osascript", "-e", script,

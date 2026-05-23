@@ -1,5 +1,5 @@
 /**
- * JARVIS — Main entry point.
+ * JARVIS (Just A Rather Very Intelligent System) — Main entry point.
  *
  * Wires together the orb visualization, WebSocket communication,
  * speech recognition, and audio playback into a single experience.
@@ -10,6 +10,10 @@ import { createVoiceInput, createAudioPlayer } from "./voice";
 import { createSocket } from "./ws";
 import { openSettings, checkFirstTimeSetup } from "./settings";
 import "./style.css";
+
+// Initialize orb color from localStorage on page load
+const savedColor = localStorage.getItem("jarvis-orb-color") || "#4ca8e8";
+document.documentElement.style.setProperty("--orb-color", savedColor);
 
 // ---------------------------------------------------------------------------
 // State machine

@@ -448,15 +448,33 @@ function wireEvents() {
     "color-yellow": "#eab308",
   };
 
+  function applyColor(color: string) {
+    // Update CSS variable
+    document.documentElement.style.setProperty("--orb-color", color);
+    // Update Three.js orb immediately
+    if (typeof (window as any).setOrbColor === "function") {
+      (window as any).setOrbColor(color);
+    }
+    // Persist locally
+    localStorage.setItem("jarvis-orb-color", color);
+    // Persist to backend (fire and forget)
+    const orb_color = color;
+    const user_name = (document.getElementById("input-user-name") as HTMLInputElement)?.value.trim() || "";
+    const honorific = (document.getElementById("input-honorific") as HTMLSelectElement)?.value || "sir";
+    apiPost("/api/settings/preferences", { user_name, honorific, orb_color }).catch(() => {});
+  }
+
   Object.entries(colorMap).forEach(([id, color]) => {
     document.getElementById(id)?.addEventListener("click", () => {
-      // Update CSS variable for orb color
-      document.documentElement.style.setProperty("--orb-color", color);
-      // Save to localStorage
-      localStorage.setItem("jarvis-orb-color", color);
-      // Visual feedback - add checked state
+      applyColor(color);
+      // Visual feedback
       document.querySelectorAll(".color-swatch").forEach(btn => btn.classList.remove("color-selected"));
       (document.getElementById(id) as HTMLElement)?.classList.add("color-selected");
+      // Sync hex input
+      const hexInput = document.getElementById("input-hex-color") as HTMLInputElement;
+      const hexPreview = document.getElementById("hex-preview") as HTMLElement;
+      if (hexInput) hexInput.value = color;
+      if (hexPreview) hexPreview.style.background = color;
     });
   });
 
@@ -508,26 +526,17 @@ function wireEvents() {
     console.log("[settings] Saved voice:", voice);
   });
 
-  // Hex color input with live preview
+  // Hex color input — applies instantly on valid input
   const hexInput = document.getElementById("input-hex-color") as HTMLInputElement;
   const hexPreview = document.getElementById("hex-preview") as HTMLElement;
   hexInput?.addEventListener("input", (e) => {
-    const value = (e.target as HTMLInputElement).value;
+    const value = (e.target as HTMLInputElement).value.trim();
     if (/^#[0-9A-F]{6}$/i.test(value)) {
-      hexPreview.style.background = value;
+      if (hexPreview) hexPreview.style.background = value;
+      // Clear swatch selection since this is a custom color
+      document.querySelectorAll(".color-swatch").forEach(btn => btn.classList.remove("color-selected"));
+      applyColor(value);
     }
-  });
-
-  // Color save
-  document.getElementById("btn-save-color")?.addEventListener("click", () => {
-    const hexInput = document.getElementById("input-hex-color") as HTMLInputElement;
-    let color = hexInput?.value.trim() || "#4ca8e8";
-    if (!/^#[0-9A-F]{6}$/i.test(color)) {
-      color = "#4ca8e8";
-    }
-    document.documentElement.style.setProperty("--orb-color", color);
-    localStorage.setItem("jarvis-orb-color", color);
-    console.log("[settings] Saved custom color:", color);
   });
 
   // Agent save

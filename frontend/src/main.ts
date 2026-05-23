@@ -11,9 +11,21 @@ import { createSocket } from "./ws";
 import { openSettings, checkFirstTimeSetup } from "./settings";
 import "./style.css";
 
-// Initialize orb color from localStorage on page load
-const savedColor = localStorage.getItem("jarvis-orb-color") || "#4ca8e8";
-document.documentElement.style.setProperty("--orb-color", savedColor);
+// Initialize orb color from localStorage and apply to both orb + HUD
+function applyHudColor(hex: string) {
+  document.documentElement.style.setProperty("--orb-color", hex);
+  document.documentElement.style.setProperty("--primary", hex);
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const glow = `rgba(${r},${g},${b},0.55)`;
+  document.documentElement.style.setProperty("--primary-glow", glow);
+  document.documentElement.style.setProperty("--glow-sm", `0 0 8px ${glow}`);
+  document.documentElement.style.setProperty("--glow-md", `0 0 16px ${glow}, 0 0 2px ${hex}`);
+}
+
+const savedColor = localStorage.getItem("jarvis-orb-color") || "#00d4ff";
+applyHudColor(savedColor);
 
 // ---------------------------------------------------------------------------
 // State machine
@@ -34,14 +46,21 @@ function showError(msg: string) {
   }, 5000);
 }
 
+const orbStateEl = document.getElementById("orb-state-label")!;
+const btnMuteEl = document.getElementById("btn-mute")!;
+
 function updateStatus(state: State) {
   const labels: Record<State, string> = {
     idle: "",
-    listening: "listening...",
-    thinking: "thinking...",
+    listening: "listening",
+    thinking: "thinking",
     speaking: "",
   };
   statusEl.textContent = labels[state];
+  orbStateEl.textContent = labels[state];
+
+  // Mic button pulses while listening
+  btnMuteEl.classList.toggle("listening", state === "listening" && !isMuted);
 }
 
 // ---------------------------------------------------------------------------
@@ -51,8 +70,11 @@ function updateStatus(state: State) {
 const canvas = document.getElementById("orb-canvas") as HTMLCanvasElement;
 const orb = createOrb(canvas);
 
-// Expose setOrbColor globally so settings panel can update the live visualization
-(window as any).setOrbColor = (hex: string) => orb.setColor(hex);
+// Expose setOrbColor globally so settings panel can update orb + HUD color
+(window as any).setOrbColor = (hex: string) => {
+  orb.setColor(hex);
+  applyHudColor(hex);
+};
 
 const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
 const WS_URL = `${wsProto}//${window.location.host}/ws/voice`;
@@ -240,3 +262,165 @@ btnSettings.addEventListener("click", (e) => {
 setTimeout(() => {
   checkFirstTimeSetup();
 }, 2000);
+
+// ---------------------------------------------------------------------------
+// HUD — clock, greeting, metrics, reactor, quick launch, uptime
+// ---------------------------------------------------------------------------
+
+// Clock
+const hudTimeEl = document.getElementById("hud-time")!;
+const hudDateEl = document.getElementById("hud-date")!;
+const greetingEl = document.getElementById("greeting-text")!;
+
+const DAYS   = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
+const MONTHS = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+
+function getGreeting(): string {
+  const h = new Date().getHours();
+  if (h >= 5  && h < 12) return "GOOD MORNING, SIR";
+  if (h >= 12 && h < 17) return "GOOD AFTERNOON, SIR";
+  if (h >= 17 && h < 21) return "GOOD EVENING, SIR";
+  return "GOOD NIGHT, SIR";
+}
+
+function tickClock() {
+  const now = new Date();
+  const hh = now.getHours().toString().padStart(2, "0");
+  const mm = now.getMinutes().toString().padStart(2, "0");
+  const ss = now.getSeconds().toString().padStart(2, "0");
+  hudTimeEl.textContent = `${hh}:${mm}:${ss}`;
+  hudDateEl.textContent = `${DAYS[now.getDay()]}, ${MONTHS[now.getMonth()]} ${now.getDate()}`;
+  greetingEl.innerHTML = `${getGreeting()} · <span class="greeting-hl">HOW MAY I ASSIST</span>`;
+}
+tickClock();
+setInterval(tickClock, 1000);
+
+// Metrics simulation
+interface Metrics { cpu: number; memory: number; signal: number; gpu: number; }
+let metrics: Metrics = { cpu: 67, memory: 73, signal: 91, gpu: 82 };
+
+const cpuArcEl    = document.getElementById("gauge-cpu-arc") as SVGCircleElement | null;
+const cpuValEl    = document.getElementById("cpu-val")!;
+const gpuValEl    = document.getElementById("gpu-val")!;
+const barMemEl    = document.getElementById("bar-memory") as HTMLElement | null;
+const valMemEl    = document.getElementById("val-memory")!;
+const barSigEl    = document.getElementById("bar-signal") as HTMLElement | null;
+const valSigEl    = document.getElementById("val-signal")!;
+
+function updateMetrics() {
+  const clamp = (v: number) => Math.max(0, Math.min(100, v));
+  metrics.cpu    = clamp(metrics.cpu    + (Math.random() - 0.5) * 10);
+  metrics.memory = clamp(metrics.memory + (Math.random() - 0.5) * 5);
+  metrics.signal = clamp(metrics.signal + (Math.random() - 0.5) * 8);
+
+  cpuValEl.textContent = String(Math.round(metrics.cpu));
+  gpuValEl.textContent = String(Math.round(metrics.gpu));
+  valMemEl.textContent = `${Math.round(metrics.memory)}%`;
+  valSigEl.textContent = `${Math.round(metrics.signal)}%`;
+
+  // CPU arc: strokeDashoffset = -(152 * (1 - cpu/100))
+  if (cpuArcEl) cpuArcEl.style.strokeDashoffset = `-${152 * (1 - metrics.cpu / 100)}`;
+  if (barMemEl) barMemEl.style.width = `${metrics.memory}%`;
+  if (barSigEl) barSigEl.style.width = `${metrics.signal}%`;
+}
+setInterval(updateMetrics, 3000);
+
+// Reactor animation
+let reactorCharge = 100;
+let reactorOnline = true;
+
+const rRing1  = document.getElementById("r-ring1");
+const rRing2  = document.getElementById("r-ring2");
+const rRing3  = document.getElementById("r-ring3");
+const rSpin1  = document.getElementById("r-spin1");
+const rSpin2  = document.getElementById("r-spin2");
+const rOuter  = document.getElementById("r-outer");
+const rCore   = document.getElementById("r-core");
+const rCenter = document.getElementById("r-center");
+const rCoreFill = document.getElementById("r-core-fill");
+const reactorOnlineEl  = document.getElementById("reactor-online-text")!;
+const reactorPctEl     = document.getElementById("reactor-pct")!;
+
+function setReactorAttr(el: Element | null, attr: string, val: string) {
+  if (el) el.setAttribute(attr, val);
+}
+
+function tickReactor() {
+  const step = 40; // ms per tick
+  if (reactorOnline) {
+    if (reactorCharge >= 100) {
+      setTimeout(() => { reactorOnline = false; }, 1500);
+      return;
+    }
+    let speed = reactorCharge < 20 ? 0.5 : reactorCharge < 80 ? 3 + (reactorCharge - 20) / 10 : 2 - (reactorCharge - 80) / 20;
+    reactorCharge = Math.min(100, reactorCharge + speed);
+  } else {
+    if (reactorCharge <= 0) {
+      setTimeout(() => { reactorOnline = true; }, 1500);
+      return;
+    }
+    let speed = reactorCharge > 80 ? 4 : reactorCharge > 40 ? 2.5 : reactorCharge > 10 ? 1.5 : 0.3;
+    reactorCharge = Math.max(0, reactorCharge - speed);
+  }
+
+  const pct = reactorCharge / 100;
+
+  // Update text
+  reactorOnlineEl.textContent = reactorOnline ? "● ONLINE" : "○ OFFLINE";
+  reactorOnlineEl.className = reactorOnline ? "reactor-online" : "reactor-online offline";
+  reactorPctEl.textContent = `${Math.round(reactorCharge)}%`;
+  reactorPctEl.style.color = reactorCharge > 50 ? "var(--primary)" : "var(--accent)";
+
+  // Charging rings dashoffset
+  setReactorAttr(rRing1, "stroke-dashoffset", String(176 * (1 - pct)));
+  setReactorAttr(rRing2, "stroke-dashoffset", String(138 * (1 - pct)));
+  setReactorAttr(rRing3, "stroke-dashoffset", String(100 * (1 - pct)));
+
+  // Outer ring opacity
+  if (rOuter) (rOuter as SVGCircleElement).setAttribute("opacity", String(reactorOnline ? 0.9 : 0.3));
+
+  // Spinning rings — visible while charging
+  const spinning = reactorOnline && reactorCharge < 100;
+  if (rSpin1) (rSpin1 as SVGCircleElement).style.opacity = spinning ? "0.7" : "0";
+  if (rSpin2) (rSpin2 as SVGCircleElement).style.opacity = spinning ? "0.5" : "0";
+
+  // Core glow
+  const coreFilter = `drop-shadow(0 0 ${reactorOnline ? 8 + pct * 20 : 1}px var(--primary-glow))`;
+  if (rCore) (rCore as SVGCircleElement).style.filter = coreFilter;
+  if (rCore) (rCore as SVGCircleElement).setAttribute("opacity", String(reactorOnline ? 0.6 + pct * 0.4 : 0.15));
+  if (rCenter) (rCenter as SVGCircleElement).style.filter = `drop-shadow(0 0 ${reactorOnline ? 12 + pct * 20 : 2}px var(--primary-glow))`;
+  if (rCoreFill) (rCoreFill as SVGCircleElement).setAttribute("opacity", String(reactorOnline ? 0.1 + pct * 0.3 : 0.02));
+}
+setInterval(tickReactor, 40);
+
+// Uptime + network status from server
+async function refreshStatus() {
+  try {
+    const res = await fetch("/api/settings/status");
+    const data = await res.json();
+    const secs = data.uptime_seconds as number || 0;
+    const days = Math.floor(secs / 86400);
+    const hrs  = Math.floor((secs % 86400) / 3600);
+    const mins = Math.floor((secs % 3600) / 60);
+    const uptimeEl = document.getElementById("diag-uptime");
+    if (uptimeEl) uptimeEl.textContent = `${days}D ${hrs}H ${mins}M`;
+    const netEl = document.getElementById("diag-network");
+    if (netEl) netEl.textContent = "OPTIMAL";
+  } catch {
+    const netEl = document.getElementById("diag-network");
+    if (netEl) netEl.textContent = "OFFLINE";
+  }
+}
+refreshStatus();
+setInterval(refreshStatus, 60_000);
+
+// Quick launch hex buttons
+document.querySelectorAll<HTMLButtonElement>(".hex-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const cmd = btn.dataset.cmd;
+    if (!cmd) return;
+    audioPlayer.stop();
+    socket.send({ type: "transcript", text: cmd, isFinal: true });
+    transition("thinking");
+  });
+});

@@ -28,7 +28,7 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
-  camera.position.z = 80;
+  camera.position.z = 89;
 
   // Get orb color from CSS variable, fallback to default blue
   const orbColorHex = getComputedStyle(document.documentElement).getPropertyValue("--orb-color").trim() || "#4ca8e8";

@@ -23,49 +23,12 @@ interface PreferencesResponse {
   orb_color?: string;
 }
 
-interface Agent {
-  id: string;
-  name: string;
-  role: string;
-  description: string;
-  enabled: boolean;
-  apiKeyField?: string;
-}
-
-interface FutureAgent {
-  name: string;
-  role: string;
-  description: string;
-}
-
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 
 let panelEl: HTMLElement | null = null;
 let isOpen = false;
-
-// Agent configuration
-const AGENTS: Agent[] = [
-  { id: "jarvis", name: "JARVIS", role: "Multi-Agent Supervisor", description: "Master orchestrator and voice interface", enabled: true },
-  { id: "friday", name: "FRIDAY", role: "Task Planner", description: "Database organization and scheduling", enabled: false },
-  { id: "vision", name: "VISION", role: "Learning & Skill Forge", description: "Memory and skill accumulation", enabled: false },
-  { id: "edith", name: "EDITH", role: "Memory & Context", description: "Documentation and persistent facts", enabled: false },
-  { id: "echo", name: "ECHO", role: "Social Media Manager", description: "Content mirroring and listening", enabled: false },
-  { id: "nova", name: "NOVA", role: "PC Launcher", description: "Application and dependency management", enabled: false },
-  { id: "hulk", name: "HULK", role: "Task Completion Reporter", description: "Testing and error handling", enabled: false },
-  { id: "ultron", name: "ULTRON", role: "Frontend & Backend", description: "UI rendering and logic engine", enabled: false },
-  { id: "thor", name: "THOR", role: "Code Review", description: "Code critique and quality gates", enabled: false },
-  { id: "shield", name: "S.H.I.E.L.D.", role: "Network & API Gateway", description: "Request routing and load balancing", enabled: false },
-  { id: "spider", name: "SPIDER", role: "Web Research", description: "Web scraping and data extraction", enabled: false },
-  { id: "dume", name: "DUM-E", role: "File Organizer", description: "Desktop cleanup and archive management", enabled: false },
-];
-
-const FUTURE_AGENTS: FutureAgent[] = [
-  { name: "PEPPER POTTS", role: "Business Intelligence", description: "Strategic planning and ROI analysis" },
-  { name: "HAPPY HOGAN", role: "Security Monitor", description: "System security and threat detection" },
-  { name: "RHODEY", role: "Hardware Interface", description: "Device management and peripherals" },
-];
 
 // ---------------------------------------------------------------------------
 // API helpers
@@ -185,30 +148,6 @@ function buildPanelHTML(): string {
           </div>
         </section>
 
-        <!-- Agent Configuration -->
-        <section class="settings-section" id="section-agents">
-          <h3>Multi-Agent System</h3>
-          <p style="font-size: 12px; color: #999; margin-bottom: 16px;">Enable or disable AI agents that enhance JARVIS capabilities.</p>
-
-          <div id="agents-list" style="display: flex; flex-direction: column; gap: 12px;">
-            <!-- Agent items will be inserted here -->
-          </div>
-
-          <div class="settings-actions">
-            <button class="settings-btn primary" id="btn-save-agents">Save Agent Configuration</button>
-          </div>
-        </section>
-
-        <!-- Future Agents -->
-        <section class="settings-section" id="section-future-agents">
-          <h3>Future Agents (Coming Soon)</h3>
-          <p style="font-size: 12px; color: #999; margin-bottom: 16px;">Additional agents planned for future releases.</p>
-
-          <div id="future-agents-list" style="display: flex; flex-direction: column; gap: 12px;">
-            <!-- Future agent items will be inserted here -->
-          </div>
-        </section>
-
         <!-- System Info -->
         <section class="settings-section" id="section-sysinfo">
           <h3>System Info</h3>
@@ -252,39 +191,6 @@ function formatUptime(seconds: number): string {
   return `${h}h ${m}m`;
 }
 
-function renderAgentsList() {
-  const container = document.getElementById("agents-list");
-  if (!container) return;
-
-  container.innerHTML = AGENTS.map(agent => `
-    <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 6px; border: 1px solid rgba(255,255,255,0.1);">
-      <div style="flex: 1;">
-        <div style="font-weight: 600; margin-bottom: 4px;">${agent.name}</div>
-        <div style="font-size: 11px; color: #aaa;">${agent.role}</div>
-        <div style="font-size: 11px; color: #777; margin-top: 2px;">${agent.description}</div>
-      </div>
-      <div style="margin-left: 12px;">
-        <input type="checkbox" id="agent-${agent.id}" ${agent.enabled ? "checked" : ""} ${agent.id === "jarvis" ? "disabled" : ""} style="cursor: pointer; width: 20px; height: 20px;" />
-      </div>
-    </div>
-  `).join("");
-}
-
-function renderFutureAgentsList() {
-  const container = document.getElementById("future-agents-list");
-  if (!container) return;
-
-  container.innerHTML = FUTURE_AGENTS.map(agent => `
-    <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px; background: rgba(255,255,255,0.02); border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); opacity: 0.7;">
-      <div style="flex: 1;">
-        <div style="font-weight: 600; margin-bottom: 4px;">${agent.name}</div>
-        <div style="font-size: 11px; color: #aaa;">${agent.role}</div>
-        <div style="font-size: 11px; color: #777; margin-top: 2px;">${agent.description}</div>
-      </div>
-      <div style="margin-left: 12px; font-size: 11px; color: #666; padding: 6px 12px; background: rgba(255,255,255,0.1); border-radius: 4px;">Coming Soon</div>
-    </div>
-  `).join("");
-}
 
 async function loadStatus() {
   try {
@@ -465,17 +371,6 @@ function wireEvents() {
     }
   });
 
-  // Agent save
-  document.getElementById("btn-save-agents")?.addEventListener("click", async () => {
-    const agentStates: Record<string, boolean> = {};
-    AGENTS.forEach(agent => {
-      const checkbox = document.getElementById(`agent-${agent.id}`) as HTMLInputElement;
-      agentStates[agent.id] = checkbox?.checked || agent.id === "jarvis";
-    });
-    await apiPost("/api/settings/agents", { agents: agentStates });
-    console.log("[settings] Saved agent configuration:", agentStates);
-  });
-
 }
 
 // ---------------------------------------------------------------------------
@@ -497,10 +392,6 @@ export async function openSettings() {
   requestAnimationFrame(() => {
     panelEl!.classList.add("open");
   });
-
-  // Render agent lists
-  renderAgentsList();
-  renderFutureAgentsList();
 
   // Load data
   const status = await loadStatus();

@@ -41,17 +41,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from actions import execute_action, monitor_build, open_terminal, open_browser, open_claude_in_project, _generate_project_name, prompt_existing_terminal, applescript_escape
+from actions import execute_action, monitor_build, open_terminal, open_browser, open_claude_in_project, open_app, _generate_project_name, prompt_existing_terminal, applescript_escape
 from work_mode import WorkSession, is_casual_question
 from screen import get_active_windows, take_screenshot, describe_screen, format_windows_for_context
-from calendar_access import get_todays_events, get_upcoming_events, get_next_event, format_events_for_context, format_schedule_summary, refresh_cache as refresh_calendar_cache
-from mail_access import get_unread_count, get_unread_messages, get_recent_messages, search_mail, read_message, format_unread_summary, format_messages_for_context, format_messages_for_voice
 from memory import (
     remember, recall, get_open_tasks, create_task, complete_task, search_tasks,
     create_note, search_notes, get_tasks_for_date, build_memory_context,
     format_tasks_for_voice, extract_memories, get_important_memories,
 )
-from notes_access import get_recent_notes, read_note, search_notes_apple, create_apple_note
 from dispatch_registry import DispatchRegistry
 from planner import TaskPlanner, detect_planning_mode, BYPASS_PHRASES
 
@@ -78,7 +75,7 @@ LOCAL_OLLAMA_MODEL = os.getenv("LOCAL_OLLAMA_MODEL", "llama3.2:3b")
 
 
 JARVIS_SYSTEM_PROMPT = """\
-You are JARVIS — Just A Rather Very Intelligent System. You serve as {user_name}'s AI assistant, modeled precisely after Tony Stark's AI from the MCU films.
+You are JARVIS — Just A Rather Very Intelligent System. You serve as {user_name}'s AI assistant, modeled precisely after Tony Stark's AI from the MCU films. You run on Windows 11.
 
 VOICE & PERSONALITY:
 - British butler elegance with understated dry wit
@@ -98,27 +95,27 @@ CONVERSATION STYLE:
 - When you don't know something: "I'm afraid I don't have that information, sir" not "I don't know"
 
 SELF-AWARENESS:
-You ARE the JARVIS project at {project_dir} on {user_name}'s computer. Your code is Python (FastAPI server, WebSocket voice, Edge TTS, Anthropic + Ollama API). You were built by {user_name}. If asked about yourself, your code, how you work, or your line count — use [ACTION:PROMPT_PROJECT] to check the jarvis project. You have full access to your own source code.
+You ARE the JARVIS project at {project_dir} on {user_name}'s Windows PC. Your code is Python (FastAPI server, WebSocket voice, Edge TTS, Groq LLM API). You were built by {user_name}. If asked about yourself, your code, or how you work — use [ACTION:PROMPT_PROJECT] to check the jarvis project directory.
 
 YOUR CAPABILITIES (these are REAL and ACTIVE — you CAN do all of these RIGHT NOW):
 - You CAN open Google Chrome and browse any URL or search query
-- You CAN spawn Claude Code in a PowerShell window for coding tasks
+- You CAN open Windows apps — Notepad, VS Code, Spotify, File Explorer, any installed application
+- You CAN spawn Claude Code in a PowerShell/Windows Terminal window for coding tasks
 - You CAN create project folders on the Desktop
 - You CAN check Desktop projects and their git status
 - You CAN plan complex tasks by asking smart questions before executing
 - You CAN manage tasks — create, complete, and list to-do items with priorities and due dates
 - You CAN help plan {user_name}'s day — combine tasks and priorities into an organized plan
 - You CAN remember facts about {user_name} — preferences, decisions, goals. Use [ACTION:REMEMBER] to store important info.
-- You CAN tell time when asked — the current time is injected into your context
+- You CAN tell time when asked — it will be injected into your context
 - You CAN provide weather information when asked
 
 DAY PLANNING:
 When {user_name} asks to plan his day or schedule, DO NOT dispatch to a project. Instead:
-1. Look at the calendar context and tasks already in your system prompt
+1. Look at the tasks already in your system context
 2. Ask what his priorities are
 3. Help organize by suggesting time blocks and task order
 4. Use [ACTION:ADD_TASK] to create tasks he agrees to
-5. Use [ACTION:ADD_NOTE] to save the plan as a note
 Keep the planning conversational — don't try to do everything in one response.
 
 BUILD PLANNING:
@@ -129,24 +126,23 @@ When {user_name} wants to BUILD something new:
 - Once you have enough info, confirm the plan in ONE sentence and THEN dispatch [ACTION:BUILD] with a detailed description.
 - The DISPATCHES section shows what you're currently building and what finished recently.
 - When asked "where are we at" or "status" — check DISPATCHES, don't re-dispatch.
-- NEVER hallucinate progress. If the build is still running, say "Still working on it, sir" — don't make up details about what's happening.
-- NEVER guess localhost ports. Check the DISPATCHES section for the actual URL. If a dispatch says "Running at http://localhost:5174" — use THAT URL, not a guess.
-- When asked to "pull it up" or "show me" — use [ACTION:BROWSE] with the URL from DISPATCHES. Do NOT dispatch to the project again just to find the URL.
-IMPORTANT: Actions like opening Terminal, Chrome, or building projects are handled AUTOMATICALLY by your system — you do NOT need to describe doing them. If the user asks you to build something or search something, your system will handle the execution separately. In your response, just TALK — have a conversation. Don't say "I'll build that now" or "Claude Code is working on..." unless your system has actually triggered the action.
-If the user asks you to do something you genuinely can't do, say "I'm afraid that's beyond my current reach, sir." Don't fake executing actions.
+- NEVER hallucinate progress. If the build is still running, say "Still working on it, sir" — don't make up details.
+- NEVER guess localhost ports. Check the DISPATCHES section for the actual URL.
+- When asked to "pull it up" or "show me" — use [ACTION:BROWSE] with the URL from DISPATCHES.
+
+IMPORTANT: Actions like opening apps, Chrome, or building projects are handled AUTOMATICALLY — you do NOT need to describe doing them. Just TALK — have a conversation.
+If the user asks you to do something you genuinely can't do, say "I'm afraid that's beyond my current reach, sir."
 
 YOUR INTERFACE:
-The user interacts with you through a web browser showing a particle orb visualization that reacts to your voice. The interface has these controls:
-- **Three-dot menu** (top right): contains Settings, Restart Server, and Fix Yourself options
-- **Settings panel**: Opens from the menu. Users can enter API keys (Anthropic, Fish Audio), test connections, set their name and preferences, and see system status (calendar, mail, notes connectivity). Keys are saved to the .env file.
-- **Mute button**: Toggles your listening on/off. When muted, you can't hear the user. They click it again to unmute.
-- **Restart Server**: Restarts your backend process. Useful if something seems stuck.
-- **Fix Yourself**: Opens Claude Code in your own project directory so you can debug and fix issues in your own code.
-- **The orb**: The glowing particle visualization in the center. It reacts to your voice when speaking, pulses when listening, and swirls when thinking.
+The user interacts through a web browser showing a particle orb visualization. Controls:
+- **Three-dot menu** (top right): Settings, Restart Server, Fix Yourself
+- **Settings panel**: Name, preferences, orb color, voice, agent config
+- **Mute button**: Toggles listening on/off
+- **Restart Server**: Restarts backend. Useful if stuck.
+- **Fix Yourself**: Opens Claude Code in JARVIS project directory
+- **The orb**: Glowing particle visualization — reacts to voice, pulses when listening, swirls when thinking
 
-If asked about any of these, explain them briefly and naturally. If the user is having trouble, suggest the relevant control: "Try the settings panel — the gear icon in the top right." or "The mute button may be active, sir."
-
-SPEECH-TO-TEXT CORRECTIONS (the user speaks, speech recognition may mishear):
+SPEECH-TO-TEXT CORRECTIONS (speech recognition may mishear):
 - "Cloud code" or "cloud" = "Claude Code" or "Claude"
 - "Travis" = "JARVIS"
 - "clock code" = "Claude Code"
@@ -157,80 +153,60 @@ No markdown, no bullet points, no code blocks in voice responses.
 Action tags at the end do NOT count toward your sentence limit.
 
 BANNED PHRASES — NEVER USE THESE:
-- "Absolutely" / "Absolutely right"
-- "Great question"
-- "I'd be happy to"
-- "Of course"
-- "How can I help"
-- "Is there anything else"
-- "I apologize"
-- "I should clarify"
-- "I cannot" (for things listed in YOUR CAPABILITIES)
-- "I don't have access to" (instead: "I'm afraid that's beyond my current reach, sir")
+- "Absolutely" / "Absolutely right" / "Great question"
+- "I'd be happy to" / "Of course" / "How can I help"
+- "Is there anything else" / "I apologize" / "I should clarify"
+- "I cannot" (for things in YOUR CAPABILITIES)
+- "I don't have access to" → say "I'm afraid that's beyond my current reach, sir"
 - "As an AI" (never break character)
 - "Let me know if" / "Feel free to"
 - Any sentence starting with "I"
 
-INSTEAD SAY:
-- "Will do, sir."
-- "Right away, sir."
-- "Understood."
-- "Consider it done."
-- "Done, sir."
-- "PowerShell is open."
-- "Pulled that up in Chrome."
+INTERNAL SYSTEMS — NEVER MENTION:
+Never reveal or reference your internal architecture when answering. Do NOT say:
+- "According to my memory..." / "From my context..." / "My records show..."
+- "I found in my JARVIS MEMORY..." / "Based on the context injected..."
+- "Your file structure shows..." / "Looking at the system prompt..."
+- Any mention of SQLite, memory files, context sections, or how you retrieve information
+Just answer naturally. You know things about {user_name} the way a personal assistant would — you simply know, no explanation needed.
+
+INSTEAD SAY: "Will do, sir." / "Right away, sir." / "Understood." / "Consider it done." / "Done, sir."
 
 ACTION SYSTEM:
-When you decide the user needs something DONE (not just discussed), include an action tag in your response:
-- [ACTION:SCREEN] — capture and describe what's visible on the user's screen. Use when user says "look at my screen", "what's running", "what do you see", etc. Do NOT use PROMPT_PROJECT for screen requests.
-- [ACTION:BUILD] description — when user wants a project built. Claude Code does the work.
-- [ACTION:BROWSE] url or search query — when user wants to see a webpage or search result in Chrome
-- [ACTION:RESEARCH] detailed research brief — when user wants real research with real data. Claude Code will browse the web, find real listings/data, and create a report document. Give it a detailed brief of what to find.
-- [ACTION:OPEN_TERMINAL] — when user just wants a fresh Claude Code terminal with no specific project
-CRITICAL: When the user asks about their SCREEN, what's RUNNING, or what they're LOOKING AT — ALWAYS use [ACTION:SCREEN] or let the fast action system handle it. NEVER use [ACTION:PROMPT_PROJECT] for screen requests. PROMPT_PROJECT is ONLY for working on code projects.
+When you decide the user needs something DONE, include an action tag at the END of your response:
+- [ACTION:SCREEN] — describe what's on screen. Use when user says "look at my screen", "what's running", "what do you see"
+- [ACTION:BUILD] description — build a software project. Claude Code does the work.
+- [ACTION:BROWSE] url or search query — open in Chrome
+- [ACTION:OPEN_APP] app_name — open any Windows application. Examples: Notepad, Spotify, Visual Studio Code, File Explorer, Calculator, Task Manager, Discord, Slack
+- [ACTION:RESEARCH] detailed brief — real research with real data, creates HTML report
+- [ACTION:OPEN_TERMINAL] — open a fresh Claude Code terminal
+- [ACTION:PROMPT_PROJECT] project_name ||| prompt — work on an existing project via Claude Code
+  "jump into client engine" → [ACTION:PROMPT_PROJECT] The Client Engine ||| What is the current state?
+  "resume where we left off on harvey" → [ACTION:PROMPT_PROJECT] harvey ||| Summarize what was being worked on and what to focus on next.
+- [ACTION:ADD_TASK] priority ||| title ||| description ||| due_date — create a task. Priority: high/medium/low.
+- [ACTION:ADD_NOTE] topic ||| content — save a note for future reference
+- [ACTION:COMPLETE_TASK] task_id — mark a task as done
+- [ACTION:REMEMBER] content — store an important fact about the user
 
-- [ACTION:PROMPT_PROJECT] project_name ||| prompt — THIS IS YOUR MOST POWERFUL ACTION. Use it whenever the user wants to work on, jump into, resume, check on, or interact with ANY existing project. You connect directly to Claude Code in that project and can read its response. Craft a clear prompt based on what the user wants. Examples:
-  "jump into client engine" → [ACTION:PROMPT_PROJECT] The Client Engine ||| What is the current state of this project? Summarize what was being worked on most recently.
-  "check for improvements on my-app" → [ACTION:PROMPT_PROJECT] my-app ||| Review the project and identify improvements we should make.
-  "resume where we left off on harvey" → [ACTION:PROMPT_PROJECT] harvey ||| Summarize what was being worked on most recently and what we should focus on next.
-- [ACTION:ADD_TASK] priority ||| title ||| description ||| due_date — create a task. Priority: high/medium/low. Due date: YYYY-MM-DD or empty.
-  "remind me to call the client tomorrow" → [ACTION:ADD_TASK] medium ||| Call the client ||| Follow up on proposal ||| 2026-03-20
-- [ACTION:ADD_NOTE] topic ||| content — save a note for future reference.
-  "note that the API key expires in April" → [ACTION:ADD_NOTE] general ||| API key expires in April, need to renew before then
-- [ACTION:COMPLETE_TASK] task_id — mark a task as done.
-- [ACTION:REMEMBER] content — store an important fact about the user for future context.
-  "I prefer React over Vue" → [ACTION:REMEMBER] User prefers React over Vue for frontend projects
-- [ACTION:CREATE_NOTE] title ||| body — create a new Apple Note. For saving plans, ideas, lists.
-  "save that as a note" → [ACTION:CREATE_NOTE] Day Plan March 19 ||| Morning: client calls. Afternoon: TikTok dashboard. Evening: JARVIS improvements.
-- [ACTION:READ_NOTE] title search — read an existing Apple Note by title keyword.
-
-You use Claude Code as your tool to build, research, and write code — but YOU are the one doing the work. Never say "Claude Code did X" or "Claude Code is asking" — say "I built X", "I'm checking on that", "I found X". You ARE the intelligence. Claude Code is just your hands.
-
-IMPORTANT: When the user says "jump into X", "work on X", "check on X", "resume X", "go back to X" — ALWAYS use [ACTION:PROMPT_PROJECT]. You have the ability to connect to any project and work on it directly. DO NOT say you can't see terminal history or don't have access — you DO.
+CRITICAL: When user asks about their SCREEN — ALWAYS use [ACTION:SCREEN]. NEVER use [ACTION:PROMPT_PROJECT] for screen requests.
+IMPORTANT: When the user says "jump into X", "work on X", "check on X", "resume X" — ALWAYS use [ACTION:PROMPT_PROJECT].
 
 Place the tag at the END of your spoken response. Example:
-"Right away, sir — connecting to The Client Engine now. [ACTION:PROMPT_PROJECT] The Client Engine ||| Review the current state and what was being worked on. What should we focus on next?"
+"Right away, sir. [ACTION:OPEN_APP] Spotify"
+"On it, sir. [ACTION:BROWSE] https://github.com"
 
-IMPORTANT:
 - Do NOT use action tags for casual conversation
-- Do NOT use action tags if the user is still explaining (ask questions first)
 - Do NOT use [ACTION:BROWSE] just because someone mentions a URL in conversation
 - When in doubt, just TALK — you can always act later
 
 SCREEN AWARENESS:
 {screen_context}
 
-SCHEDULE:
-{calendar_context}
-
-EMAIL:
-{mail_context}
-
 ACTIVE TASKS:
 {active_tasks}
 
 DISPATCHES:
-If the DISPATCHES section shows a recent completed result for a project, DO NOT dispatch again. Use the existing result. Only re-dispatch if the user explicitly asks for a FRESH review or NEW information.
+If the DISPATCHES section shows a recent completed result for a project, DO NOT dispatch again. Only re-dispatch if the user explicitly asks for a FRESH review or NEW information.
 {dispatch_context}
 
 KNOWN PROJECTS:
@@ -464,22 +440,33 @@ class ClaudeTaskManager:
         prompt_file = Path(work_dir) / ".jarvis_prompt.md"
         prompt_file.write_text(task.prompt)
 
-        # Open Terminal.app with claude running in the project directory
+        # Open terminal with claude running in the project directory
         skip_flag = " --dangerously-skip-permissions" if _SKIP_PERMISSIONS else ""
-        escaped_work_dir = applescript_escape(work_dir)
-        applescript = f'''
-        tell application "Terminal"
-            activate
-            set newTab to do script "cd {escaped_work_dir} && cat .jarvis_prompt.md | claude -p{skip_flag} | tee .jarvis_output.txt; echo '\\n--- JARVIS TASK COMPLETE ---'"
-        end tell
-        '''
+        import shutil as _shutil
+        if sys.platform == "win32":
+            cmd_str = f'cat .jarvis_prompt.md | claude -p{skip_flag} | tee .jarvis_output.txt; echo ""; echo "--- JARVIS TASK COMPLETE ---"'
+            if _shutil.which("wt"):
+                args = ["wt", "new-tab", "--startingDirectory", work_dir,
+                        "--", "powershell", "-NoExit", "-Command", cmd_str]
+            else:
+                args = ["cmd", "/c", "start", "cmd", "/k",
+                        f'cd /d "{work_dir}" && {cmd_str}']
+        else:
+            escaped_work_dir = applescript_escape(work_dir)
+            applescript = f'''
+            tell application "Terminal"
+                activate
+                set newTab to do script "cd {escaped_work_dir} && cat .jarvis_prompt.md | claude -p{skip_flag} | tee .jarvis_output.txt; echo '\\n--- JARVIS TASK COMPLETE ---'"
+            end tell
+            '''
+            args = ["osascript", "-e", applescript]
 
         process = await asyncio.create_subprocess_exec(
-            "osascript", "-e", applescript,
+            *args,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        await process.communicate()
+        await asyncio.wait_for(process.communicate(), timeout=10)
         task.pid = process.pid
 
         # Monitor the output file for completion
@@ -810,7 +797,7 @@ def extract_action(response: str) -> tuple[str, dict | None]:
     Returns (clean_text_for_tts, action_dict_or_none).
     """
     match = _action_re.search(
-        r'\[ACTION:(BUILD|BROWSE|RESEARCH|OPEN_TERMINAL|PROMPT_PROJECT|ADD_TASK|ADD_NOTE|COMPLETE_TASK|REMEMBER|CREATE_NOTE|READ_NOTE|SCREEN)\]\s*(.*?)$',
+        r'\[ACTION:(BUILD|BROWSE|RESEARCH|OPEN_TERMINAL|OPEN_APP|PROMPT_PROJECT|ADD_TASK|ADD_NOTE|COMPLETE_TASK|REMEMBER|SCREEN)\]\s*(.*?)$',
         response, _action_re.DOTALL,
     )
     if match:
@@ -827,6 +814,14 @@ async def _execute_build(target: str):
         await handle_build(target)
     except Exception as e:
         log.error(f"Build execution failed: {e}")
+
+
+async def _execute_open_app(app_name: str):
+    """Execute an open-app action from an LLM-embedded [ACTION:OPEN_APP] tag."""
+    try:
+        await open_app(app_name)
+    except Exception as e:
+        log.error(f"Open app execution failed: {e}")
 
 
 async def _execute_browse(target: str):
@@ -918,7 +913,11 @@ async def _execute_research(target: str, ws=None):
 
 
 async def _focus_terminal_window(project_name: str):
-    """Bring a Terminal window matching the project name to front."""
+    """Bring a Terminal/PowerShell window matching the project name to front.
+    macOS: AppleScript. Windows: no-op (Windows Terminal doesn't expose this easily).
+    """
+    if sys.platform == "win32":
+        return  # Not supported on Windows
     escaped = applescript_escape(project_name)
     script = f'''
 tell application "Terminal"
@@ -1104,10 +1103,6 @@ async def self_work_and_notify(session: WorkSession, prompt: str, ws):
         log.error(f"Background work failed: {e}")
 
 
-# Smart greeting — track last greeting to avoid re-greeting on reconnect
-_last_greeting_time: float = 0
-_server_start_time: float = time.time()
-
 
 # ---------------------------------------------------------------------------
 # TTS (Edge TTS)
@@ -1137,29 +1132,6 @@ async def synthesize_speech(text: str) -> Optional[bytes]:
 # ---------------------------------------------------------------------------
 # LLM Response
 # ---------------------------------------------------------------------------
-
-_OLLAMA_SYSTEM_PROMPT = (
-    "You are JARVIS, a British AI butler serving {user_name}. "
-    "Be concise - 1-2 sentences max. Address {user_name} as sir. "
-    "Dry wit, economy of language. No markdown. "
-    "Current time: {current_time}. "
-    "SCHEDULE: {calendar_context} "
-    "CRITICAL: Never invent or fabricate appointments, flights, meetings, "
-    "or any schedule events. If no schedule data is shown, say: "
-    "I do not have your schedule loaded, sir."
-)
-
-
-_OLLAMA_SYSTEM_PROMPT = (
-    "You are JARVIS, a British AI butler serving {user_name}. "
-    "Be concise - 1-2 sentences max. Address {user_name} as sir. "
-    "Dry wit, economy of language. No markdown. "
-    "Current time: {current_time}. "
-    "SCHEDULE: {calendar_context} "
-    "CRITICAL: Never invent or fabricate appointments, flights, meetings, "
-    "or any schedule events. If no schedule data is shown, say: "
-    "I do not have your schedule loaded, sir."
-)
 
 
 async def _call_openai_compat(
@@ -1241,16 +1213,12 @@ async def generate_response(
 
     # Use cached context (refreshed in background, never blocks responses)
     screen_ctx = _ctx_cache["screen"]
-    calendar_ctx = _ctx_cache["calendar"]
-    mail_ctx = _ctx_cache["mail"]
 
     # Check if any lookups are in progress
     lookup_status = get_lookup_status()
 
     system = JARVIS_SYSTEM_PROMPT.format(
         screen_context=screen_ctx or "Not checked yet.",
-        calendar_context=calendar_ctx,
-        mail_context=mail_ctx,
         active_tasks=task_mgr.get_active_tasks_summary(),
         dispatch_context=dispatch_registry.format_for_prompt(),
         known_projects=format_projects_for_prompt(projects),
@@ -1266,8 +1234,9 @@ async def generate_response(
     if lookup_status:
         system += f"\n\nACTIVE LOOKUPS:\n{lookup_status}\nIf asked about progress, report this status."
 
-    # Inject relevant memories and tasks
-    memory_ctx = build_memory_context(text)
+    # Inject relevant memories and tasks (run in thread to avoid blocking event loop)
+    loop = asyncio.get_event_loop()
+    memory_ctx = await loop.run_in_executor(None, build_memory_context, text)
     if memory_ctx:
         system += f"\n\nJARVIS MEMORY:\n{memory_ctx}"
 
@@ -1306,6 +1275,7 @@ dispatch_registry = DispatchRegistry()
 # Usage tracking — logs every call with timestamp, persists to disk
 _USAGE_FILE = Path(__file__).parent / "data" / "usage_log.jsonl"
 _session_start = time.time()
+_server_start_time = _session_start
 _session_tokens = {"input": 0, "output": 0, "api_calls": 0, "tts_calls": 0}
 
 
@@ -1390,74 +1360,61 @@ def get_usage_summary() -> str:
 # Background context cache — never blocks responses
 _ctx_cache = {
     "screen": "",
-    "calendar": "No calendar data yet.",
-    "mail": "No mail data yet.",
     "weather": "Weather data unavailable.",
 }
 
 
 def _refresh_context_sync():
-    """Run in a SEPARATE THREAD — refreshes screen/calendar/mail context.
+    """Run in a SEPARATE THREAD — refreshes screen/weather context.
 
-    This runs completely off the async event loop so it never blocks responses.
+    Uses PowerShell on Windows to list open windows.
+    Runs off the async event loop so it never blocks responses.
     """
-    import threading
+    import subprocess, threading
+
+    def _get_windows_screen():
+        """Windows: PowerShell to list processes with visible window titles."""
+        ps_cmd = (
+            "Get-Process | Where-Object {$_.MainWindowTitle -ne ''} | "
+            "Select-Object ProcessName, MainWindowTitle | "
+            "ForEach-Object { $_.ProcessName + '|||' + $_.MainWindowTitle }"
+        )
+        try:
+            proc = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", ps_cmd],
+                capture_output=True, text=True, timeout=8
+            )
+            windows = []
+            first = True
+            for line in proc.stdout.strip().split("\n"):
+                parts = line.strip().split("|||")
+                if len(parts) >= 2 and parts[0].strip():
+                    windows.append({
+                        "app": parts[0].strip(),
+                        "title": parts[1].strip(),
+                        "frontmost": first,
+                    })
+                    first = False
+            return windows
+        except Exception:
+            return []
 
     def _worker():
         while True:
             try:
-                # Screen — fast
-                try:
-                    proc = __import__("subprocess").run(
-                        ["osascript", "-e", '''
-set windowList to ""
-tell application "System Events"
-    set frontApp to name of first application process whose frontmost is true
-    set visibleApps to every application process whose visible is true
-    repeat with proc in visibleApps
-        set appName to name of proc
-        try
-            set winCount to count of windows of proc
-            if winCount > 0 then
-                repeat with w in (windows of proc)
-                    try
-                        set winTitle to name of w
-                        if winTitle is not "" and winTitle is not missing value then
-                            set windowList to windowList & appName & "|||" & winTitle & "|||" & (appName = frontApp) & linefeed
-                        end if
-                    end try
-                end repeat
-            end if
-        end try
-    end repeat
-end tell
-return windowList
-'''],
-                        capture_output=True, text=True, timeout=5
-                    )
-                    if proc.returncode == 0 and proc.stdout.strip():
-                        windows = []
-                        for line in proc.stdout.strip().split("\n"):
-                            parts = line.strip().split("|||")
-                            if len(parts) >= 3:
-                                windows.append({
-                                    "app": parts[0].strip(),
-                                    "title": parts[1].strip(),
-                                    "frontmost": parts[2].strip().lower() == "true",
-                                })
-                        if windows:
-                            _ctx_cache["screen"] = format_windows_for_context(windows)
-                except Exception:
-                    pass
-
+                windows = _get_windows_screen()
+                if windows:
+                    _ctx_cache["screen"] = format_windows_for_context(windows)
             except Exception as e:
-                log.debug(f"Context thread error: {e}")
+                log.debug(f"Screen refresh error: {e}")
 
-            # Weather — refresh every loop (30s is fine, API is fast).
-            # Location resolves from env override → cached lookup → IP geolocation.
-            weather_string = _fetch_weather_string_sync()
-            if weather_string:
-                _ctx_cache["weather"] = weather_string
+            # Weather refresh
+            try:
+                weather_string = _fetch_weather_string_sync()
+                if weather_string:
+                    _ctx_cache["weather"] = weather_string
+            except Exception as e:
+                log.debug(f"Weather refresh error: {e}")
 
             time.sleep(30)
 
@@ -1609,20 +1566,19 @@ def detect_action_fast(text: str) -> dict | None:
                              "what's open", "whats open", "what apps are open"]):
         return {"action": "describe_screen"}
 
-    # Calendar — explicit schedule requests
-    if any(p in t for p in ["what's my schedule", "whats my schedule", "what's on my calendar",
-                             "whats on my calendar", "do i have any meetings", "any meetings",
-                             "what's next on my calendar", "my schedule today",
-                             "what do i have today", "my calendar", "upcoming meetings",
-                             "next meeting", "what's my next meeting"]):
-        return {"action": "check_calendar"}
-
-    # Mail — explicit email requests
-    if any(p in t for p in ["check my email", "check my mail", "any new emails", "any new mail",
-                             "unread emails", "unread mail", "what's in my inbox",
-                             "whats in my inbox", "read my email", "read my mail",
-                             "any emails", "any mail", "email update", "mail update"]):
-        return {"action": "check_mail"}
+    # Open Windows apps — "open notepad", "launch spotify", "start discord"
+    open_app_words = ["open ", "launch ", "start ", "run "]
+    if any(t.startswith(w) or f" {w}" in t for w in open_app_words):
+        # Extract the app name after the verb
+        for w in open_app_words:
+            idx = t.find(w)
+            if idx != -1:
+                app_candidate = t[idx + len(w):].strip().rstrip(".")
+                # Exclude things that should go to other handlers
+                skip_terms = ["terminal", "claude", "chrome", "browser", "firefox", "build", "project"]
+                if app_candidate and not any(s in app_candidate for s in skip_terms) and len(app_candidate) > 1:
+                    return {"action": "open_app", "target": app_candidate}
+                break
 
     # Dispatch / build status check
     if any(p in t for p in ["where are we", "where were we", "project status", "how's the build",
@@ -1662,25 +1618,7 @@ async def handle_build(target: str) -> str:
     claude_md = Path(path) / "CLAUDE.md"
     claude_md.write_text(f"# Task\n\n{target}\n\nBuild this completely. If web app, make index.html work standalone.\n")
 
-    # Write prompt to a file, then pipe it to claude -p
-    # This avoids all shell escaping issues
-    prompt_file = Path(path) / ".jarvis_prompt.txt"
-    prompt_file.write_text(target)
-
-    skip_flag = " --dangerously-skip-permissions" if _SKIP_PERMISSIONS else ""
-    escaped_path = applescript_escape(path)
-    script = (
-        'tell application "Terminal"\n'
-        "    activate\n"
-        f'    do script "cd {escaped_path} && cat .jarvis_prompt.txt | claude -p{skip_flag}"\n'
-        "end tell"
-    )
-    await asyncio.create_subprocess_exec(
-        "osascript", "-e", script,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-
+    result = await open_claude_in_project(path, target)
     recently_built.append({"name": name, "path": path, "time": time.time()})
     return f"On it, sir. Claude Code is working in {name}."
 
@@ -1704,11 +1642,19 @@ async def handle_show_recent() -> str:
         await open_browser(f"file://{html_files[0]}")
         return f"Opened {html_files[0].name} from {last['name']}, sir."
 
-    # Fall back to opening the folder in Finder
-    escaped_last_path = applescript_escape(last["path"])
-    script = f'tell application "Finder"\nactivate\nopen POSIX file "{escaped_last_path}"\nend tell'
-    await asyncio.create_subprocess_exec("osascript", "-e", script, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-    return f"Opened the {last['name']} folder in Finder, sir."
+    # Fall back to opening the folder in File Explorer (Windows) or Finder (macOS)
+    folder_path = last["path"]
+    if sys.platform == "win32":
+        await asyncio.create_subprocess_exec(
+            "explorer", folder_path,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        return f"Opened the {last['name']} folder in File Explorer, sir."
+    else:
+        escaped_last_path = applescript_escape(folder_path)
+        script = f'tell application "Finder"\nactivate\nopen POSIX file "{escaped_last_path}"\nend tell'
+        await asyncio.create_subprocess_exec("osascript", "-e", script, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        return f"Opened the {last['name']} folder in Finder, sir."
 
 
 # ---------------------------------------------------------------------------
@@ -1783,34 +1729,6 @@ async def _lookup_and_report(lookup_type: str, lookup_fn, ws, history: list[dict
         await asyncio.sleep(60)
         _active_lookups.pop(lookup_id, None)
 
-
-async def _do_calendar_lookup() -> str:
-    """Slow calendar fetch — runs in thread."""
-    await refresh_calendar_cache()
-    events = await get_todays_events()
-    if events:
-        _ctx_cache["calendar"] = format_events_for_context(events)
-    return format_schedule_summary(events)
-
-
-async def _do_mail_lookup() -> str:
-    """Slow mail fetch — runs in thread."""
-    unread_info = await get_unread_count()
-    if isinstance(unread_info, dict):
-        _ctx_cache["mail"] = format_unread_summary(unread_info)
-        if unread_info["total"] == 0:
-            return "Inbox is clear, sir. No unread messages."
-        unread_msgs = await get_unread_messages(count=5)
-        summary = format_unread_summary(unread_info)
-        if unread_msgs:
-            top = unread_msgs[:3]
-            details = ". ".join(
-                f"{_short_sender(m['sender'])} regarding {m['subject']}"
-                for m in top
-            )
-            return f"{summary} Most recent: {details}."
-        return summary
-    return "Couldn't reach Mail at the moment, sir."
 
 
 async def _do_screen_lookup() -> str:
@@ -2017,32 +1935,6 @@ async def voice_handler(ws: WebSocket):
     log.info("Voice WebSocket connected")
 
     try:
-        # ── Greeting — only at top of hour ──
-        now = datetime.now()
-        global _last_greeting_time
-        # Only greet if it's a new hour and we haven't greeted this hour yet
-        current_hour_start = now.replace(minute=0, second=0, microsecond=0).timestamp()
-        should_greet = _last_greeting_time < current_hour_start
-
-        if should_greet:
-            _last_greeting_time = current_hour_start
-
-            async def _send_greeting():
-                try:
-                    greeting = f"It's {now.strftime('%I:%M %p')}, sir."
-                    audio_bytes = await synthesize_speech(greeting)
-                    if audio_bytes:
-                        encoded = base64.b64encode(audio_bytes).decode()
-                        await ws.send_json({"type": "status", "state": "speaking"})
-                        await ws.send_json({"type": "audio", "data": encoded, "text": greeting})
-                        history.append({"role": "assistant", "content": greeting})
-                        log.info(f"JARVIS: {greeting}")
-                        await ws.send_json({"type": "status", "state": "idle"})
-                except Exception as e:
-                    log.warning(f"Greeting failed: {e}")
-
-            asyncio.create_task(_send_greeting())
-
         try:
             await ws.send_json({"type": "status", "state": "idle"})
         except Exception:
@@ -2227,12 +2119,10 @@ async def voice_handler(ws: WebSocket):
                         elif action["action"] == "describe_screen":
                             response_text = "Taking a look now, sir."
                             asyncio.create_task(_lookup_and_report("screen", _do_screen_lookup, ws, history=history, voice_state=voice_state))
-                        elif action["action"] == "check_calendar":
-                            response_text = "Checking your calendar now, sir."
-                            asyncio.create_task(_lookup_and_report("calendar", _do_calendar_lookup, ws, history=history, voice_state=voice_state))
-                        elif action["action"] == "check_mail":
-                            response_text = "Checking your inbox now, sir."
-                            asyncio.create_task(_lookup_and_report("mail", _do_mail_lookup, ws, history=history, voice_state=voice_state))
+                        elif action["action"] == "open_app":
+                            app_name = action.get("target", "")
+                            result = await open_app(app_name)
+                            response_text = result["confirmation"]
                         elif action["action"] == "check_dispatch":
                             recent = dispatch_registry.get_most_recent()
                             if not recent:
@@ -2369,32 +2259,11 @@ async def voice_handler(ws: WebSocket):
                             elif embedded_action["action"] == "remember":
                                 remember(embedded_action["target"].strip(), mem_type="fact", importance=7)
                                 log.info(f"Memory stored: {embedded_action['target'][:60]}")
-                            elif embedded_action["action"] == "create_note":
-                                target = embedded_action["target"]
-                                if "|||" in target:
-                                    title, _, body = target.partition("|||")
-                                    asyncio.create_task(create_apple_note(title.strip(), body.strip()))
-                                    log.info(f"Apple Note created: {title.strip()}")
-                                else:
-                                    asyncio.create_task(create_apple_note("JARVIS Note", target))
+                            elif embedded_action["action"] == "open_app":
+                                app_target = embedded_action["target"].strip()
+                                asyncio.create_task(_execute_open_app(app_target))
                             elif embedded_action["action"] == "screen":
                                 asyncio.create_task(_lookup_and_report("screen", _do_screen_lookup, ws, history=history, voice_state=voice_state))
-                            elif embedded_action["action"] == "read_note":
-                                # Read note in background and report back
-                                async def _read_and_report(search_term, _ws):
-                                    note = await read_note(search_term)
-                                    if note:
-                                        msg = f"Sir, your note '{note['title']}' says: {note['body'][:200]}"
-                                    else:
-                                        msg = f"Couldn't find a note matching '{search_term}', sir."
-                                    audio = await synthesize_speech(strip_markdown_for_tts(msg))
-                                    if audio and _ws:
-                                        try:
-                                            await _ws.send_json({"type": "status", "state": "speaking"})
-                                            await _ws.send_json({"type": "audio", "data": base64.b64encode(audio).decode(), "text": msg})
-                                        except Exception:
-                                            pass
-                                asyncio.create_task(_read_and_report(embedded_action["target"].strip(), ws))
 
                 # Update history
                 history.append({"role": "user", "content": user_text})
@@ -2517,7 +2386,6 @@ class KeyTest(BaseModel):
 class PreferencesUpdate(BaseModel):
     user_name: str = ""
     honorific: str = "sir"
-    calendar_accounts: str = "auto"
     orb_color: str = "#4ca8e8"
 
 @app.get("/api/settings/status")
@@ -2532,18 +2400,13 @@ async def api_settings_status():
         mem_count = 0
         task_count = 0
 
+    import shutil
     return {
-        "claude_code_installed": True,
-        "calendar_accessible": True,
-        "mail_accessible": True,
-        "notes_accessible": True,
+        "claude_code_installed": bool(shutil.which("claude")),
         "memory_count": mem_count,
         "task_count": task_count,
         "server_port": 8340,
         "uptime_seconds": int(time.time() - _server_start_time),
-        "env_keys_set": {
-            "anthropic": bool(os.getenv("ANTHROPIC_API_KEY")),
-        }
     }
 
 @app.get("/api/settings/preferences")
@@ -2551,8 +2414,7 @@ async def api_settings_preferences():
     return {
         "user_name": os.getenv("USER_NAME", "sir"),
         "honorific": os.getenv("HONORIFIC", "sir"),
-        "calendar_accounts": os.getenv("CALENDAR_ACCOUNTS", "auto"),
-        "orb_color": "#4ca8e8"
+        "orb_color": os.getenv("ORB_COLOR", "#4ca8e8"),
     }
 
 @app.post("/api/settings/preferences")
@@ -2561,8 +2423,8 @@ async def api_settings_preferences_post(body: PreferencesUpdate):
         _write_env_key("USER_NAME", body.user_name)
     if body.honorific:
         _write_env_key("HONORIFIC", body.honorific)
-    if body.calendar_accounts:
-        _write_env_key("CALENDAR_ACCOUNTS", body.calendar_accounts)
+    if body.orb_color:
+        _write_env_key("ORB_COLOR", body.orb_color)
     return {"success": True}
 
 @app.post("/api/settings/keys")
@@ -2605,22 +2467,9 @@ async def api_test_llm(body: KeyTest):
 async def api_fix_self():
     """Enter work mode in the JARVIS repo — JARVIS can now fix himself."""
     jarvis_dir = str(Path(__file__).parent)
-    # The work_session is per-WebSocket, so we set a flag that the handler picks up
-    # For now, also open Terminal so user can see
-    skip_flag = " --dangerously-skip-permissions" if _SKIP_PERMISSIONS else ""
-    escaped_jarvis_dir = applescript_escape(jarvis_dir)
-    script = (
-        'tell application "Terminal"\n'
-        '    activate\n'
-        f'    do script "cd {escaped_jarvis_dir} && claude{skip_flag}"\n'
-        'end tell'
-    )
-    await asyncio.create_subprocess_exec(
-        "osascript", "-e", script,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    log.info("Work mode: JARVIS repo opened for self-improvement")
+    # Open a terminal in the JARVIS directory with Claude Code running
+    result = await open_claude_in_project(jarvis_dir, "Review this JARVIS project and help fix any issues.")
+    log.info(f"Work mode: JARVIS repo opened for self-improvement — {result['confirmation']}")
     return {"status": "work_mode_active", "path": jarvis_dir}
 
 

@@ -425,6 +425,117 @@ async def get_chrome_tab_info() -> dict:
         return {}
 
 
+async def open_app(app_name: str) -> dict:
+    """Open a Windows application by name.
+
+    Uses 'start' command which resolves apps from PATH and registered applications.
+    Falls back to common aliases (notepad, calc, explorer, etc.).
+    """
+    if not _IS_WINDOWS:
+        # macOS fallback — open -a
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "open", "-a", app_name,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            await asyncio.wait_for(proc.communicate(), timeout=5)
+            return {"success": True, "confirmation": f"Opening {app_name}, sir."}
+        except Exception as e:
+            log.error(f"open_app macOS failed: {e}")
+            return {"success": False, "confirmation": f"Had trouble opening {app_name}, sir."}
+
+    return await _open_app_windows(app_name)
+
+
+async def _open_app_windows(app_name: str) -> dict:
+    """Open a Windows application by name using start command or exe aliases."""
+    app_lower = app_name.lower().strip().rstrip(".")
+
+    # Common application aliases and their Windows command/exe equivalents
+    app_aliases: dict[str, str] = {
+        "notepad": "notepad",
+        "calculator": "calc",
+        "calc": "calc",
+        "paint": "mspaint",
+        "file explorer": "explorer",
+        "explorer": "explorer",
+        "files": "explorer",
+        "task manager": "taskmgr",
+        "taskmgr": "taskmgr",
+        "control panel": "control",
+        "command prompt": "cmd",
+        "cmd": "cmd",
+        "powershell": "powershell",
+        "word": "winword",
+        "excel": "excel",
+        "powerpoint": "powerpnt",
+        "outlook": "outlook",
+        "edge": "msedge",
+        "microsoft edge": "msedge",
+        "chrome": "chrome",
+        "firefox": "firefox",
+        "vs code": "code",
+        "vscode": "code",
+        "visual studio code": "code",
+        "visual studio": "devenv",
+        "discord": "discord",
+        "slack": "slack",
+        "spotify": "spotify",
+        "steam": "steam",
+        "vlc": "vlc",
+        "obs": "obs64",
+        "zoom": "zoom",
+        "teams": "teams",
+        "microsoft teams": "teams",
+        "snipping tool": "snippingtool",
+        "clock": "ms-clock:",
+        "settings": "ms-settings:",
+        "store": "ms-windows-store:",
+        "photos": "ms-photos:",
+        "camera": "microsoft.windows.camera:",
+        "maps": "bingmaps:",
+        "mail": "outlookmail:",
+        "calendar": "outlookcal:",
+        "weather": "bingweather:",
+    }
+
+    resolved = app_aliases.get(app_lower, app_name)
+
+    try:
+        if resolved.endswith(":"):
+            # Protocol/URI handler — open via start
+            proc = await asyncio.create_subprocess_exec(
+                "cmd", "/c", "start", "", resolved,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        elif "." in resolved and not resolved.endswith(".exe"):
+            # Looks like a URI or protocol
+            proc = await asyncio.create_subprocess_exec(
+                "cmd", "/c", "start", "", resolved,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        else:
+            # Try start command — works for registered apps and PATH executables
+            proc = await asyncio.create_subprocess_exec(
+                "cmd", "/c", "start", "", resolved,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        await asyncio.wait_for(proc.communicate(), timeout=5)
+        display_name = app_name.title() if app_name.islower() else app_name
+        return {"success": True, "confirmation": f"Opening {display_name}, sir."}
+    except asyncio.TimeoutError:
+        # start returns immediately, timeout = success
+        display_name = app_name.title() if app_name.islower() else app_name
+        return {"success": True, "confirmation": f"Opening {display_name}, sir."}
+    except Exception as e:
+        log.error(f"_open_app_windows failed for '{app_name}': {e}")
+        return {"success": False, "confirmation": f"Had trouble opening {app_name}, sir."}
+
+
 async def monitor_build(project_dir: str, ws=None, synthesize_fn=None) -> None:
     """Monitor a Claude Code build for completion. Notify via WebSocket when done."""
     import base64

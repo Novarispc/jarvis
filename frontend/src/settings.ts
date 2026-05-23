@@ -11,9 +11,6 @@
 
 interface StatusResponse {
   claude_code_installed: boolean;
-  calendar_accessible: boolean;
-  mail_accessible: boolean;
-  notes_accessible: boolean;
   memory_count: number;
   task_count: number;
   server_port: number;
@@ -23,7 +20,6 @@ interface StatusResponse {
 interface PreferencesResponse {
   user_name: string;
   honorific: string;
-  calendar_accounts: string;
   orb_color?: string;
 }
 
@@ -109,9 +105,6 @@ function buildPanelHTML(): string {
           <h3>Connection Status</h3>
           <div class="status-grid">
             <div class="status-row"><span class="status-dot" id="status-claude-cli"></span><span>Claude Code CLI</span></div>
-            <div class="status-row"><span class="status-dot" id="status-calendar"></span><span>Apple Calendar</span></div>
-            <div class="status-row"><span class="status-dot" id="status-mail"></span><span>Apple Mail</span></div>
-            <div class="status-row"><span class="status-dot" id="status-notes"></span><span>Apple Notes</span></div>
             <div class="status-row"><span class="status-dot" id="status-server"></span><span>Server</span><span class="status-detail" id="status-server-detail"></span></div>
           </div>
         </section>
@@ -132,11 +125,6 @@ function buildPanelHTML(): string {
               <option value="ma'am">Ma'am</option>
               <option value="none">None</option>
             </select>
-          </div>
-
-          <div class="settings-field">
-            <label>Calendar Accounts</label>
-            <textarea id="input-calendar-accounts" rows="2" placeholder="auto (or comma-separated emails)"></textarea>
           </div>
 
           <div class="settings-actions">
@@ -303,9 +291,6 @@ async function loadStatus() {
     const status = await apiGet<StatusResponse>("/api/settings/status");
 
     setDotStatus("status-claude-cli", status.claude_code_installed ? "green" : "red");
-    setDotStatus("status-calendar", status.calendar_accessible ? "green" : "red");
-    setDotStatus("status-mail", status.mail_accessible ? "green" : "red");
-    setDotStatus("status-notes", status.notes_accessible ? "green" : "red");
     setDotStatus("status-server", "green");
 
     const serverDetail = document.getElementById("status-server-detail");
@@ -334,16 +319,16 @@ async function loadPreferences() {
     const prefs = await apiGet<PreferencesResponse>("/api/settings/preferences");
     const nameEl = document.getElementById("input-user-name") as HTMLInputElement;
     const honEl = document.getElementById("input-honorific") as HTMLSelectElement;
-    const calEl = document.getElementById("input-calendar-accounts") as HTMLTextAreaElement;
     if (nameEl) nameEl.value = prefs.user_name || "";
     if (honEl) honEl.value = prefs.honorific || "sir";
-    if (calEl) calEl.value = prefs.calendar_accounts || "auto";
 
-    // Restore saved color
+    // Restore saved color — update CSS variable AND live Three.js orb
     if (prefs.orb_color) {
       localStorage.setItem("jarvis-orb-color", prefs.orb_color);
       document.documentElement.style.setProperty("--orb-color", prefs.orb_color);
-      console.log("[settings] Restored color:", prefs.orb_color);
+      if (typeof (window as any).setOrbColor === "function") {
+        (window as any).setOrbColor(prefs.orb_color);
+      }
     }
   } catch (e) {
     console.error("[settings] failed to load preferences:", e);
@@ -434,10 +419,8 @@ function wireEvents() {
   document.getElementById("btn-save-prefs")?.addEventListener("click", async () => {
     const user_name = (document.getElementById("input-user-name") as HTMLInputElement).value.trim();
     const honorific = (document.getElementById("input-honorific") as HTMLSelectElement).value;
-    const calendar_accounts = (document.getElementById("input-calendar-accounts") as HTMLTextAreaElement).value.trim();
     const orb_color = localStorage.getItem("jarvis-orb-color") || "#4ca8e8";
-    await apiPost("/api/settings/preferences", { user_name, honorific, calendar_accounts, orb_color });
-    console.log("[settings] Saved preferences including color:", orb_color);
+    await apiPost("/api/settings/preferences", { user_name, honorific, orb_color });
     await loadStatus();
   });
 

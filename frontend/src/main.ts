@@ -51,6 +51,9 @@ function updateStatus(state: State) {
 const canvas = document.getElementById("orb-canvas") as HTMLCanvasElement;
 const orb = createOrb(canvas);
 
+// Expose setOrbColor globally so settings panel can update the live visualization
+(window as any).setOrbColor = (hex: string) => orb.setColor(hex);
+
 const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
 const WS_URL = `${wsProto}//${window.location.host}/ws/voice`;
 const socket = createSocket(WS_URL);

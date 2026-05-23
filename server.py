@@ -198,6 +198,9 @@ CRITICAL: When the user asks about their SCREEN, what's RUNNING, or what they're
 - [ACTION:ADD_NOTE] topic ||| content — save a note for future reference.
   "note that the API key expires in April" → [ACTION:ADD_NOTE] general ||| API key expires in April, need to renew before then
 - [ACTION:COMPLETE_TASK] task_id — mark a task as done.
+- [ACTION:SCHEDULE_TASK] title ||| schedule_type ||| schedule_time — create a recurring scheduled task. schedule_type: daily/weekly/monthly/once. schedule_time: optional, e.g. "3pm" or "15:30".
+  "remind me daily at 9am to check emails" → [ACTION:SCHEDULE_TASK] Check emails ||| daily ||| 9am
+  "schedule team meeting every week on Monday" → [ACTION:SCHEDULE_TASK] Team meeting ||| weekly |||
 - [ACTION:REMEMBER] content — store an important fact about the user for future context.
   "I prefer React over Vue" → [ACTION:REMEMBER] User prefers React over Vue for frontend projects
 - [ACTION:CREATE_NOTE] title ||| body — create a new Apple Note. For saving plans, ideas, lists.
@@ -1449,6 +1452,16 @@ async def lifespan(application: FastAPI):
     _refresh_context_sync()
     log.info("JARVIS server starting")
 
+    # Start FRIDAY scheduler if enabled
+    if os.getenv("ENABLE_SCHEDULER", "false").lower() in ("true", "1", "yes"):
+        try:
+            from agents import start_scheduler
+            start_scheduler()
+        except Exception as e:
+            log.warning(f"FRIDAY scheduler disabled: {e}")
+    else:
+        log.info("[FRIDAY] Scheduler disabled (set ENABLE_SCHEDULER=true to enable)")
+
     yield
 
 
@@ -1527,6 +1540,70 @@ async def api_cancel_task(task_id: str):
             content={"error": "Task not found or not cancellable"},
         )
     return {"task_id": task_id, "status": "cancelled"}
+
+
+# ── FRIDAY Scheduled Tasks ──
+@app.get("/api/tasks/scheduled/list")
+async def api_get_scheduled_tasks():
+    """Get all scheduled/recurring tasks."""
+    try:
+        from agents import get_scheduled_tasks
+        tasks = get_scheduled_tasks(only_recurring=False)
+        return {"tasks": [{"id": t[0], "title": t[1], "schedule_type": t[10], "next_run": t[11]} for t in tasks]}
+    except Exception as e:
+        log.error(f"[FRIDAY] API error: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/tasks/scheduled/create")
+async def api_create_scheduled_task(body: dict):
+    """Create a new scheduled task."""
+    try:
+        from agents import create_scheduled_task
+        title = body.get("title", "")
+        description = body.get("description", "")
+        priority = body.get("priority", "medium")
+        schedule_type = body.get("schedule_type", "daily")
+        schedule_time = body.get("schedule_time")
+        due_date = body.get("due_date")
+        project = body.get("project", "")
+
+        if not title:
+            return JSONResponse({"error": "Title required"}, status_code=400)
+
+        task = create_scheduled_task(
+            title=title,
+            description=description,
+            priority=priority,
+            schedule_type=schedule_type,
+            schedule_time=schedule_time,
+            due_date=due_date,
+            project=project,
+        )
+
+        if task:
+            return task
+        return JSONResponse({"error": "Failed to create task"}, status_code=500)
+    except Exception as e:
+        log.error(f"[FRIDAY] Task creation error: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.delete("/api/tasks/scheduled/{task_id}")
+async def api_cancel_scheduled_task(task_id: int):
+    """Cancel a scheduled task."""
+    try:
+        from memory import _get_db
+        conn = _get_db()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE tasks SET status = 'cancelled' WHERE id = ?", (task_id,))
+        conn.commit()
+        conn.close()
+        log.info(f"[FRIDAY] Cancelled scheduled task {task_id}")
+        return {"success": True}
+    except Exception as e:
+        log.error(f"[FRIDAY] Cancellation error: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @app.get("/api/projects")

@@ -1165,6 +1165,7 @@ _OLLAMA_SYSTEM_PROMPT = (
 async def _call_openai_compat(
     base_url: str, model: str, api_key: str,
     messages: list[dict], max_tokens: int,
+    connect_timeout: float = 5.0, read_timeout: float = 30.0,
 ) -> str:
     """Call any OpenAI-compatible chat completions endpoint."""
     headers = {"Content-Type": "application/json"}
@@ -1172,14 +1173,14 @@ async def _call_openai_compat(
         headers["Authorization"] = f"Bearer {api_key}"
     url = f"{base_url.rstrip('/')}/v1/chat/completions"
     payload = {"model": model, "messages": messages, "max_tokens": max_tokens, "stream": False}
-    async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, read=120.0)) as http:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(connect_timeout, read=read_timeout)) as http:
         resp = await http.post(url, json=payload, headers=headers)
         resp.raise_for_status()
         return resp.json()["choices"][0]["message"]["content"].strip()
 
 
 async def _llm_call(system: str, messages: list[dict], max_tokens: int = 250) -> str:
-    """Call Groq when online, fall back to local Ollama."""
+    """Call Groq with retry on rate-limit; fall back to local Ollama only if reachable."""
     chat_msgs: list[dict] = []
     if system:
         chat_msgs.append({"role": "system", "content": system})
@@ -1190,17 +1191,41 @@ async def _llm_call(system: str, messages: list[dict], max_tokens: int = 250) ->
             content = " ".join(b.get("text", "") for b in content if isinstance(b, dict))
         chat_msgs.append({"role": role, "content": content})
 
+    # Primary LLM (Groq when configured) with retry on transient errors
     if OLLAMA_BASE_URL and OLLAMA_BASE_URL.rstrip('/') != LOCAL_OLLAMA_URL.rstrip('/'):
-        try:
-            return await _call_openai_compat(OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_API_KEY, chat_msgs, max_tokens)
-        except Exception as e:
-            log.warning(f"Primary LLM failed: {e} -- falling back to local Ollama")
+        last_err: Optional[Exception] = None
+        for attempt in range(3):
+            try:
+                return await _call_openai_compat(
+                    OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_API_KEY,
+                    chat_msgs, max_tokens,
+                    connect_timeout=5.0, read_timeout=30.0,
+                )
+            except httpx.HTTPStatusError as e:
+                last_err = e
+                status = e.response.status_code
+                if status == 429 or 500 <= status < 600:
+                    wait_s = 1.5 * (attempt + 1)
+                    log.warning(f"Primary LLM {status}, retrying in {wait_s}s (attempt {attempt + 1}/3)")
+                    await asyncio.sleep(wait_s)
+                    continue
+                break
+            except Exception as e:
+                last_err = e
+                log.warning(f"Primary LLM error (attempt {attempt + 1}/3): {e}")
+                await asyncio.sleep(1.0)
+        log.warning(f"Primary LLM failed after retries: {last_err}")
 
+    # Local Ollama fallback — short timeout so we fail fast when it's not running
     try:
-        return await _call_openai_compat(LOCAL_OLLAMA_URL, LOCAL_OLLAMA_MODEL, "", chat_msgs, max_tokens)
+        return await _call_openai_compat(
+            LOCAL_OLLAMA_URL, LOCAL_OLLAMA_MODEL, "",
+            chat_msgs, max_tokens,
+            connect_timeout=2.0, read_timeout=15.0,
+        )
     except Exception as e:
         log.error(f"Local Ollama also failed: {e}")
-        return "Apologies, sir. All language systems are currently unavailable."
+        return "Apologies, sir. The server's having a moment — try again in a few seconds."
 
 
 async def generate_response(

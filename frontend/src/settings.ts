@@ -18,9 +18,6 @@ interface StatusResponse {
   task_count: number;
   server_port: number;
   uptime_seconds: number;
-  env_keys_set: {
-    anthropic: boolean;
-  };
 }
 
 interface PreferencesResponse {
@@ -51,8 +48,6 @@ interface FutureAgent {
 
 let panelEl: HTMLElement | null = null;
 let isOpen = false;
-let isFirstTimeSetup = false;
-let setupStep = 0; // 0=anthropic, 1=fish, 2=name, 3=done
 
 // Agent configuration
 const AGENTS: Agent[] = [
@@ -107,29 +102,7 @@ function buildPanelHTML(): string {
         <button class="settings-close" id="settings-close">&times;</button>
       </div>
 
-      <div class="settings-welcome" id="settings-welcome" style="display:none">
-        <p>Welcome to JARVIS. Let's get you set up.</p>
-      </div>
-
       <div class="settings-body">
-
-        <!-- API Keys -->
-        <section class="settings-section" id="section-api-keys">
-          <h3>API Keys</h3>
-
-          <div class="settings-field">
-            <label>Anthropic API Key</label>
-            <div class="settings-input-row">
-              <input type="password" id="input-anthropic-key" placeholder="sk-ant-..." />
-              <button class="settings-btn" id="btn-test-anthropic">Test</button>
-              <span class="status-dot" id="status-anthropic"></span>
-            </div>
-          </div>
-
-          <div class="settings-actions">
-            <button class="settings-btn primary" id="btn-save-keys">Save Keys</button>
-          </div>
-        </section>
 
         <!-- Connection Status -->
         <section class="settings-section" id="section-status">
@@ -259,11 +232,6 @@ function buildPanelHTML(): string {
           </div>
         </section>
 
-        <!-- Setup Navigation (first-time only) -->
-        <div class="setup-nav" id="setup-nav" style="display:none">
-          <button class="settings-btn primary" id="btn-setup-next">Next</button>
-        </div>
-
       </div>
     </div>
   `;
@@ -343,9 +311,6 @@ async function loadStatus() {
     const serverDetail = document.getElementById("status-server-detail");
     if (serverDetail) serverDetail.textContent = `port ${status.server_port} | up ${formatUptime(status.uptime_seconds)}`;
 
-    // API key status dot
-    setDotStatus("status-anthropic", status.env_keys_set.anthropic ? "green" : "red");
-
     // System info
     const memEl = document.getElementById("sysinfo-memory");
     if (memEl) memEl.textContent = String(status.memory_count);
@@ -413,28 +378,6 @@ function wireEvents() {
   // Close
   document.getElementById("settings-close")?.addEventListener("click", closeSettings);
   document.getElementById("settings-backdrop")?.addEventListener("click", closeSettings);
-
-  // Save keys
-  document.getElementById("btn-save-keys")?.addEventListener("click", async () => {
-    const anthropicKey = (document.getElementById("input-anthropic-key") as HTMLInputElement).value.trim();
-
-    if (anthropicKey) {
-      await apiPost("/api/settings/keys", { key_name: "ANTHROPIC_API_KEY", key_value: anthropicKey });
-    }
-    await loadStatus();
-  });
-
-  // Test Anthropic
-  document.getElementById("btn-test-anthropic")?.addEventListener("click", async () => {
-    setDotStatus("status-anthropic", "yellow");
-    const key = (document.getElementById("input-anthropic-key") as HTMLInputElement).value.trim();
-    try {
-      const result = await apiPost<{ valid: boolean; error?: string }>("/api/settings/test-llm", { key_value: key || undefined });
-      setDotStatus("status-anthropic", result.valid ? "green" : "red");
-    } catch {
-      setDotStatus("status-anthropic", "red");
-    }
-  });
 
   // Color swatches
   const colorMap: Record<string, string> = {
@@ -550,69 +493,6 @@ function wireEvents() {
     console.log("[settings] Saved agent configuration:", agentStates);
   });
 
-  // Setup next button
-  document.getElementById("btn-setup-next")?.addEventListener("click", advanceSetup);
-}
-
-// ---------------------------------------------------------------------------
-// First-time setup wizard
-// ---------------------------------------------------------------------------
-
-function enterSetupMode() {
-  isFirstTimeSetup = true;
-  setupStep = 0;
-
-  const welcome = document.getElementById("settings-welcome");
-  if (welcome) welcome.style.display = "block";
-
-  const nav = document.getElementById("setup-nav");
-  if (nav) nav.style.display = "flex";
-
-  // Hide sections except API keys
-  showSetupStep(0);
-}
-
-function showSetupStep(step: number) {
-  const sections = ["section-api-keys", "section-status", "section-preferences", "section-sysinfo"];
-  sections.forEach((id, i) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    if (step === 0 && i === 0) el.style.display = "";
-    else if (step === 1 && i === 0) el.style.display = "";
-    else if (step === 2 && i === 2) el.style.display = "";
-    else if (step === 3) el.style.display = "";
-    else el.style.display = "none";
-  });
-
-  const nextBtn = document.getElementById("btn-setup-next");
-  if (nextBtn) {
-    if (step === 0) nextBtn.textContent = "Next: Test Keys";
-    else if (step === 1) nextBtn.textContent = "Next: Set Your Name";
-    else if (step === 2) nextBtn.textContent = "Finish Setup";
-    else nextBtn.style.display = "none";
-  }
-}
-
-async function advanceSetup() {
-  setupStep++;
-  if (setupStep >= 3) {
-    // Done — save everything and close
-    isFirstTimeSetup = false;
-    const welcome = document.getElementById("settings-welcome");
-    if (welcome) welcome.style.display = "none";
-    const nav = document.getElementById("setup-nav");
-    if (nav) nav.style.display = "none";
-
-    // Show all sections
-    ["section-api-keys", "section-status", "section-preferences", "section-sysinfo"].forEach((id) => {
-      const el = document.getElementById(id);
-      if (el) el.style.display = "";
-    });
-
-    closeSettings();
-    return;
-  }
-  showSetupStep(setupStep);
 }
 
 // ---------------------------------------------------------------------------
@@ -643,10 +523,6 @@ export async function openSettings() {
   const status = await loadStatus();
   await loadPreferences();
 
-  // Check for first-time setup
-  if (status && !status.env_keys_set.anthropic) {
-    enterSetupMode();
-  }
 }
 
 export function closeSettings() {
@@ -666,14 +542,5 @@ export function isSettingsOpen(): boolean {
  * Check if first-time setup is needed and auto-open.
  */
 export async function checkFirstTimeSetup(): Promise<boolean> {
-  try {
-    const status = await apiGet<StatusResponse>("/api/settings/status");
-    if (!status.env_keys_set.anthropic) {
-      openSettings();
-      return true;
-    }
-  } catch {
-    // Server not ready yet, skip
-  }
   return false;
 }

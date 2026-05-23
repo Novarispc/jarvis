@@ -1,16 +1,14 @@
-INFO:     Started server process [14772]
+INFO:     Started server process [27148]
 INFO:     Waiting for application startup.
-2026-05-23 13:25:59,794 [jarvis] Context refresh thread started
-2026-05-23 13:25:59,794 [jarvis] JARVIS server starting
+2026-05-23 13:28:15,533 [jarvis] Context refresh thread started
+2026-05-23 13:28:15,533 [jarvis] JARVIS server starting
 INFO:     Application startup complete.
 INFO:     Uvicorn running on https://0.0.0.0:8340 (Press CTRL+C to quit)
-INFO:     127.0.0.1:58824 - "WebSocket /ws/voice" [accepted]
-2026-05-23 13:26:11,150 [jarvis] Voice WebSocket connected
+INFO:     127.0.0.1:55979 - "WebSocket /ws/voice" [accepted]
+2026-05-23 13:28:23,241 [jarvis] Voice WebSocket connected
 INFO:     connection open
-2026-05-23 13:26:12,511 [jarvis] Edge TTS: 20304 bytes
-2026-05-23 13:26:12,519 [jarvis] JARVIS: It's 01:26 PM, sir.
-2026-05-23 13:26:19,874 [jarvis] User: 6:00 p.m.
-2026-05-23 13:26:19,880 [jarvis] Scanned 1 projects
-2026-05-23 13:26:20,663 [httpx] HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-2026-05-23 13:26:21,819 [jarvis] Edge TTS: 34416 bytes
-2026-05-23 13:26:21,823 [jarvis] JARVIS: The time is not 6:00 p.m., sir, but rather 1:26 PM.
+2026-05-23 13:28:24,652 [jarvis] Edge TTS: 19872 bytes
+2026-05-23 13:28:24,655 [jarvis] JARVIS: It's 01:28 PM, sir.
+INFO:     127.0.0.1:53570 - "WebSocket /ws/voice" [accepted]
+2026-05-23 13:28:27,120 [jarvis] Voice WebSocket connected
+INFO:     connection open

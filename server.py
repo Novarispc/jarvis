@@ -2493,7 +2493,7 @@ class PreferencesUpdate(BaseModel):
     user_name: str = ""
     honorific: str = "sir"
     calendar_accounts: str = "auto"
-    orb_color: str = "#4ca8e8"
+    orb_color: str = ""
 
 @app.get("/api/settings/status")
 async def api_settings_status():
@@ -2527,7 +2527,7 @@ async def api_settings_preferences():
         "user_name": os.getenv("USER_NAME", "sir"),
         "honorific": os.getenv("HONORIFIC", "sir"),
         "calendar_accounts": os.getenv("CALENDAR_ACCOUNTS", "auto"),
-        "orb_color": "#4ca8e8"
+        "orb_color": os.getenv("ORB_COLOR", "#4ca8e8")
     }
 
 @app.post("/api/settings/preferences")
@@ -2538,11 +2538,13 @@ async def api_settings_preferences_post(body: PreferencesUpdate):
         _write_env_key("HONORIFIC", body.honorific)
     if body.calendar_accounts:
         _write_env_key("CALENDAR_ACCOUNTS", body.calendar_accounts)
+    if body.orb_color:
+        _write_env_key("ORB_COLOR", body.orb_color)
     return {"success": True}
 
 @app.post("/api/settings/keys")
 async def api_settings_keys(body: KeyUpdate):
-    allowed = {"USER_NAME", "HONORIFIC", "CALENDAR_ACCOUNTS", "OLLAMA_API_KEY", "OLLAMA_MODEL", "EDGE_TTS_VOICE"}
+    allowed = {"USER_NAME", "HONORIFIC", "CALENDAR_ACCOUNTS", "OLLAMA_API_KEY", "OLLAMA_MODEL", "EDGE_TTS_VOICE", "ORB_COLOR"}
     if body.key_name not in allowed:
         return JSONResponse({"success": False, "error": "Invalid key name"}, status_code=400)
     _write_env_key(body.key_name, body.key_value)

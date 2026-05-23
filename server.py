@@ -107,19 +107,10 @@ YOUR CAPABILITIES (these are REAL and ACTIVE — you CAN do all of these RIGHT N
 - You CAN check Desktop projects and their git status
 - You CAN plan complex tasks by asking smart questions before executing
 - You CAN manage tasks — create, complete, and list to-do items with priorities and due dates
-- You CAN schedule recurring tasks (daily, weekly, monthly) and one-time reminders using FRIDAY. Use [ACTION:SCHEDULE_TASK] for this.
 - You CAN help plan {user_name}'s day — combine tasks and priorities into an organized plan
 - You CAN remember facts about {user_name} — preferences, decisions, goals. Use [ACTION:REMEMBER] to store important info.
 - You CAN tell time when asked — the current time is injected into your context
 - You CAN provide weather information when asked
-
-FRIDAY — THE SCHEDULER AGENT:
-FRIDAY is your background scheduler agent. It manages recurring and one-time scheduled tasks:
-- FRIDAY runs in the background, checking every minute for due tasks
-- When tasks are due, FRIDAY automatically executes them and reschedules recurring tasks
-- You can ask {user_name} to create scheduled tasks using [ACTION:SCHEDULE_TASK]
-- Examples: "remind me daily at 9am to check emails" or "schedule team sync every Monday at 2pm"
-- FRIDAY operates silently in the background — you don't need to ask permission to use it
 
 DAY PLANNING:
 When {user_name} asks to plan his day or schedule, DO NOT dispatch to a project. Instead:
@@ -207,9 +198,6 @@ CRITICAL: When the user asks about their SCREEN, what's RUNNING, or what they're
 - [ACTION:ADD_NOTE] topic ||| content — save a note for future reference.
   "note that the API key expires in April" → [ACTION:ADD_NOTE] general ||| API key expires in April, need to renew before then
 - [ACTION:COMPLETE_TASK] task_id — mark a task as done.
-- [ACTION:SCHEDULE_TASK] title ||| schedule_type ||| schedule_time — create a recurring scheduled task. schedule_type: daily/weekly/monthly/once. schedule_time: optional, e.g. "3pm" or "15:30".
-  "remind me daily at 9am to check emails" → [ACTION:SCHEDULE_TASK] Check emails ||| daily ||| 9am
-  "schedule team meeting every week on Monday" → [ACTION:SCHEDULE_TASK] Team meeting ||| weekly |||
 - [ACTION:REMEMBER] content — store an important fact about the user for future context.
   "I prefer React over Vue" → [ACTION:REMEMBER] User prefers React over Vue for frontend projects
 - [ACTION:CREATE_NOTE] title ||| body — create a new Apple Note. For saving plans, ideas, lists.
@@ -1461,16 +1449,6 @@ async def lifespan(application: FastAPI):
     _refresh_context_sync()
     log.info("JARVIS server starting")
 
-    # Start FRIDAY scheduler if enabled
-    if os.getenv("ENABLE_SCHEDULER", "false").lower() in ("true", "1", "yes"):
-        try:
-            from agents import start_scheduler
-            start_scheduler()
-        except Exception as e:
-            log.warning(f"FRIDAY scheduler disabled: {e}")
-    else:
-        log.info("[FRIDAY] Scheduler disabled (set ENABLE_SCHEDULER=true to enable)")
-
     yield
 
 
@@ -1549,70 +1527,6 @@ async def api_cancel_task(task_id: str):
             content={"error": "Task not found or not cancellable"},
         )
     return {"task_id": task_id, "status": "cancelled"}
-
-
-# ── FRIDAY Scheduled Tasks ──
-@app.get("/api/tasks/scheduled/list")
-async def api_get_scheduled_tasks():
-    """Get all scheduled/recurring tasks."""
-    try:
-        from agents import get_scheduled_tasks
-        tasks = get_scheduled_tasks(only_recurring=False)
-        return {"tasks": [{"id": t[0], "title": t[1], "schedule_type": t[10], "next_run": t[11]} for t in tasks]}
-    except Exception as e:
-        log.error(f"[FRIDAY] API error: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-@app.post("/api/tasks/scheduled/create")
-async def api_create_scheduled_task(body: dict):
-    """Create a new scheduled task."""
-    try:
-        from agents import create_scheduled_task
-        title = body.get("title", "")
-        description = body.get("description", "")
-        priority = body.get("priority", "medium")
-        schedule_type = body.get("schedule_type", "daily")
-        schedule_time = body.get("schedule_time")
-        due_date = body.get("due_date")
-        project = body.get("project", "")
-
-        if not title:
-            return JSONResponse({"error": "Title required"}, status_code=400)
-
-        task = create_scheduled_task(
-            title=title,
-            description=description,
-            priority=priority,
-            schedule_type=schedule_type,
-            schedule_time=schedule_time,
-            due_date=due_date,
-            project=project,
-        )
-
-        if task:
-            return task
-        return JSONResponse({"error": "Failed to create task"}, status_code=500)
-    except Exception as e:
-        log.error(f"[FRIDAY] Task creation error: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-@app.delete("/api/tasks/scheduled/{task_id}")
-async def api_cancel_scheduled_task(task_id: int):
-    """Cancel a scheduled task."""
-    try:
-        from memory import _get_db
-        conn = _get_db()
-        cursor = conn.cursor()
-        cursor.execute("UPDATE tasks SET status = 'cancelled' WHERE id = ?", (task_id,))
-        conn.commit()
-        conn.close()
-        log.info(f"[FRIDAY] Cancelled scheduled task {task_id}")
-        return {"success": True}
-    except Exception as e:
-        log.error(f"[FRIDAY] Cancellation error: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @app.get("/api/projects")
@@ -2090,7 +2004,7 @@ async def voice_handler(ws: WebSocket):
 
             async def _send_greeting():
                 try:
-                    greeting = "Good day, sir."
+                    greeting = f"It's {now.strftime('%I:%M %p')}, sir."
                     audio_bytes = await synthesize_speech(greeting)
                     if audio_bytes:
                         encoded = base64.b64encode(audio_bytes).decode()
@@ -2579,7 +2493,7 @@ class PreferencesUpdate(BaseModel):
     user_name: str = ""
     honorific: str = "sir"
     calendar_accounts: str = "auto"
-    orb_color: str = ""
+    orb_color: str = "#4ca8e8"
 
 @app.get("/api/settings/status")
 async def api_settings_status():
@@ -2593,30 +2507,6 @@ async def api_settings_status():
         mem_count = 0
         task_count = 0
 
-    # Check FRIDAY scheduler status
-    friday_enabled = os.getenv("ENABLE_SCHEDULER", "false").lower() in ("true", "1", "yes")
-    friday_running = False
-    if friday_enabled:
-        try:
-            from agents.friday import _scheduler_running
-            friday_running = _scheduler_running
-        except:
-            friday_running = False
-
-    # Agent status
-    agents = {
-        "jarvis": {
-            "name": "JARVIS",
-            "status": "online",
-            "type": "supervisor"
-        },
-        "friday": {
-            "name": "FRIDAY",
-            "status": "online" if friday_running else "offline",
-            "type": "scheduler"
-        }
-    }
-
     return {
         "claude_code_installed": True,
         "calendar_accessible": True,
@@ -2628,8 +2518,7 @@ async def api_settings_status():
         "uptime_seconds": int(time.time() - _server_start_time),
         "env_keys_set": {
             "anthropic": bool(os.getenv("ANTHROPIC_API_KEY")),
-        },
-        "agents": agents
+        }
     }
 
 @app.get("/api/settings/preferences")
@@ -2638,7 +2527,7 @@ async def api_settings_preferences():
         "user_name": os.getenv("USER_NAME", "sir"),
         "honorific": os.getenv("HONORIFIC", "sir"),
         "calendar_accounts": os.getenv("CALENDAR_ACCOUNTS", "auto"),
-        "orb_color": os.getenv("ORB_COLOR", "#4ca8e8")
+        "orb_color": "#4ca8e8"
     }
 
 @app.post("/api/settings/preferences")
@@ -2649,13 +2538,11 @@ async def api_settings_preferences_post(body: PreferencesUpdate):
         _write_env_key("HONORIFIC", body.honorific)
     if body.calendar_accounts:
         _write_env_key("CALENDAR_ACCOUNTS", body.calendar_accounts)
-    if body.orb_color:
-        _write_env_key("ORB_COLOR", body.orb_color)
     return {"success": True}
 
 @app.post("/api/settings/keys")
 async def api_settings_keys(body: KeyUpdate):
-    allowed = {"USER_NAME", "HONORIFIC", "CALENDAR_ACCOUNTS", "OLLAMA_API_KEY", "OLLAMA_MODEL", "EDGE_TTS_VOICE", "ORB_COLOR"}
+    allowed = {"USER_NAME", "HONORIFIC", "CALENDAR_ACCOUNTS", "OLLAMA_API_KEY", "OLLAMA_MODEL", "EDGE_TTS_VOICE"}
     if body.key_name not in allowed:
         return JSONResponse({"success": False, "error": "Invalid key name"}, status_code=400)
     _write_env_key(body.key_name, body.key_value)

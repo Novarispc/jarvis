@@ -13,7 +13,6 @@ export type OrbState = "idle" | "listening" | "thinking" | "speaking";
 export interface Orb {
   setState(s: OrbState): void;
   setAnalyser(a: AnalyserNode | null): void;
-  setColor(hexColor: string): void;
   destroy(): void;
 }
 
@@ -336,14 +335,6 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
     setAnalyser(a: AnalyserNode | null) {
       analyser = a;
       if (a) freqData = new Uint8Array(a.frequencyBinCount);
-    },
-    setColor(hexColor: string) {
-      baseColor.setStyle(hexColor);
-      thinkingColor.copy(baseColor).lerp(new THREE.Color(0xffffff), 0.3);
-      speakingColor.copy(baseColor).lerp(new THREE.Color(0xffffff), 0.15);
-      // Update materials to use new colors
-      mat.color.copy(baseColor);
-      lineMat.color.copy(baseColor);
     },
     destroy() {
       destroyed = true;

@@ -113,32 +113,10 @@ function buildPanelHTML(): string {
 
       <div class="settings-body">
 
-        <!-- API Keys -->
-        <section class="settings-section" id="section-api-keys">
-          <h3>API Keys</h3>
-
-          <div class="settings-field">
-            <label>Anthropic API Key</label>
-            <div class="settings-input-row">
-              <input type="password" id="input-anthropic-key" placeholder="sk-ant-..." />
-              <button class="settings-btn" id="btn-test-anthropic">Test</button>
-              <span class="status-dot" id="status-anthropic"></span>
-            </div>
-          </div>
-
-          <div class="settings-actions">
-            <button class="settings-btn primary" id="btn-save-keys">Save Keys</button>
-          </div>
-        </section>
-
         <!-- Connection Status -->
         <section class="settings-section" id="section-status">
-          <h3>Connection Status</h3>
+          <h3>System Status</h3>
           <div class="status-grid">
-            <div class="status-row"><span class="status-dot" id="status-claude-cli"></span><span>Claude Code CLI</span></div>
-            <div class="status-row"><span class="status-dot" id="status-calendar"></span><span>Apple Calendar</span></div>
-            <div class="status-row"><span class="status-dot" id="status-mail"></span><span>Apple Mail</span></div>
-            <div class="status-row"><span class="status-dot" id="status-notes"></span><span>Apple Notes</span></div>
             <div class="status-row"><span class="status-dot" id="status-server"></span><span>Server</span><span class="status-detail" id="status-server-detail"></span></div>
           </div>
         </section>
@@ -198,7 +176,7 @@ function buildPanelHTML(): string {
           <h3>Orb Color</h3>
 
           <div class="settings-field">
-            <label>Preset Colors</label>
+            <label>Preset Colors (click to apply)</label>
             <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 8px;">
               <button class="color-swatch" id="color-blue" style="background: #4ca8e8;" title="Blue (default)"></button>
               <button class="color-swatch" id="color-cyan" style="background: #00d9ff;" title="Cyan"></button>
@@ -217,10 +195,7 @@ function buildPanelHTML(): string {
               <input type="text" id="input-hex-color" placeholder="#4ca8e8" maxlength="7" />
               <span id="hex-preview" style="width: 30px; height: 30px; background: #4ca8e8; border-radius: 4px; border: 1px solid #666;"></span>
             </div>
-          </div>
-
-          <div class="settings-actions">
-            <button class="settings-btn primary" id="btn-save-color">Save Color</button>
+            <small style="color: #999; margin-top: 4px;">Format: #RRGGBB (changes apply instantly)</small>
           </div>
         </section>
 
@@ -414,29 +389,7 @@ function wireEvents() {
   document.getElementById("settings-close")?.addEventListener("click", closeSettings);
   document.getElementById("settings-backdrop")?.addEventListener("click", closeSettings);
 
-  // Save keys
-  document.getElementById("btn-save-keys")?.addEventListener("click", async () => {
-    const anthropicKey = (document.getElementById("input-anthropic-key") as HTMLInputElement).value.trim();
-
-    if (anthropicKey) {
-      await apiPost("/api/settings/keys", { key_name: "ANTHROPIC_API_KEY", key_value: anthropicKey });
-    }
-    await loadStatus();
-  });
-
-  // Test Anthropic
-  document.getElementById("btn-test-anthropic")?.addEventListener("click", async () => {
-    setDotStatus("status-anthropic", "yellow");
-    const key = (document.getElementById("input-anthropic-key") as HTMLInputElement).value.trim();
-    try {
-      const result = await apiPost<{ valid: boolean; error?: string }>("/api/settings/test-llm", { key_value: key || undefined });
-      setDotStatus("status-anthropic", result.valid ? "green" : "red");
-    } catch {
-      setDotStatus("status-anthropic", "red");
-    }
-  });
-
-  // Color swatches
+  // Color swatches - immediate visual feedback
   const colorMap: Record<string, string> = {
     "color-blue": "#4ca8e8",
     "color-cyan": "#00d9ff",
@@ -449,25 +402,38 @@ function wireEvents() {
   };
 
   Object.entries(colorMap).forEach(([id, color]) => {
-    document.getElementById(id)?.addEventListener("click", () => {
-      // Update CSS variable for orb color
+    document.getElementById(id)?.addEventListener("click", async () => {
+      // Immediate visual feedback - update orb color instantly
       document.documentElement.style.setProperty("--orb-color", color);
-      // Save to localStorage
       localStorage.setItem("jarvis-orb-color", color);
-      // Visual feedback - add checked state
+      // Update hex input
+      const hexInput = document.getElementById("input-hex-color") as HTMLInputElement;
+      if (hexInput) hexInput.value = color;
+      // Update hex preview
+      const hexPreview = document.getElementById("hex-preview") as HTMLElement;
+      if (hexPreview) hexPreview.style.background = color;
+      // Visual feedback - highlight selected swatch
       document.querySelectorAll(".color-swatch").forEach(btn => btn.classList.remove("color-selected"));
       (document.getElementById(id) as HTMLElement)?.classList.add("color-selected");
+      // Save to backend
+      const user_name = (document.getElementById("input-user-name") as HTMLInputElement)?.value || "";
+      const honorific = (document.getElementById("input-honorific") as HTMLSelectElement)?.value || "sir";
+      const calendar_accounts = (document.getElementById("input-calendar-accounts") as HTMLTextAreaElement)?.value || "auto";
+      await apiPost("/api/settings/preferences", { user_name, honorific, calendar_accounts, orb_color: color });
     });
   });
 
   // Load saved color on init
   const savedColor = localStorage.getItem("jarvis-orb-color") || "#4ca8e8";
   document.documentElement.style.setProperty("--orb-color", savedColor);
+  const hexPreviewInit = document.getElementById("hex-preview") as HTMLElement;
+  if (hexPreviewInit) hexPreviewInit.style.background = savedColor;
   for (const [id, color] of Object.entries(colorMap)) {
     if (color === savedColor) {
       (document.getElementById(id) as HTMLElement)?.classList.add("color-selected");
     }
   }
+  // Will be set by the hex input event listener below
 
   // Save preferences
   document.getElementById("btn-save-prefs")?.addEventListener("click", async () => {
@@ -508,26 +474,24 @@ function wireEvents() {
     console.log("[settings] Saved voice:", voice);
   });
 
-  // Hex color input with live preview
+  // Hex color input with live preview and instant save
   const hexInput = document.getElementById("input-hex-color") as HTMLInputElement;
   const hexPreview = document.getElementById("hex-preview") as HTMLElement;
-  hexInput?.addEventListener("input", (e) => {
+  hexInput?.addEventListener("input", async (e) => {
     const value = (e.target as HTMLInputElement).value;
     if (/^#[0-9A-F]{6}$/i.test(value)) {
       hexPreview.style.background = value;
+      // Apply immediately
+      document.documentElement.style.setProperty("--orb-color", value);
+      localStorage.setItem("jarvis-orb-color", value);
+      // Remove selection from swatches
+      document.querySelectorAll(".color-swatch").forEach(btn => btn.classList.remove("color-selected"));
+      // Save to backend
+      const user_name = (document.getElementById("input-user-name") as HTMLInputElement)?.value || "";
+      const honorific = (document.getElementById("input-honorific") as HTMLSelectElement)?.value || "sir";
+      const calendar_accounts = (document.getElementById("input-calendar-accounts") as HTMLTextAreaElement)?.value || "auto";
+      await apiPost("/api/settings/preferences", { user_name, honorific, calendar_accounts, orb_color: value });
     }
-  });
-
-  // Color save
-  document.getElementById("btn-save-color")?.addEventListener("click", () => {
-    const hexInput = document.getElementById("input-hex-color") as HTMLInputElement;
-    let color = hexInput?.value.trim() || "#4ca8e8";
-    if (!/^#[0-9A-F]{6}$/i.test(color)) {
-      color = "#4ca8e8";
-    }
-    document.documentElement.style.setProperty("--orb-color", color);
-    localStorage.setItem("jarvis-orb-color", color);
-    console.log("[settings] Saved custom color:", color);
   });
 
   // Agent save

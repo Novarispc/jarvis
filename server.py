@@ -51,6 +51,8 @@ from memory import (
 )
 from dispatch_registry import DispatchRegistry
 from planner import TaskPlanner, detect_planning_mode, BYPASS_PHRASES
+from agents.vision import VisionAgent
+from agents.multilingual import detect_language, is_supported, translate, get_voice, get_language_name
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
 log = logging.getLogger("jarvis")
@@ -109,6 +111,7 @@ YOUR CAPABILITIES (these are REAL and ACTIVE — you CAN do all of these RIGHT N
 - You CAN remember facts about {user_name} — preferences, decisions, goals. Use [ACTION:REMEMBER] to store important info.
 - You CAN tell time when asked — it will be injected into your context
 - You CAN provide weather information when asked
+- You CAN answer factual questions via VISION — your knowledge sub-agent with Wikipedia access. Use [ACTION:ASK_VISION] for any factual/encyclopedic question.
 
 DAY PLANNING:
 When {user_name} asks to plan his day or schedule, DO NOT dispatch to a project. Instead:
@@ -133,14 +136,47 @@ When {user_name} wants to BUILD something new:
 IMPORTANT: Actions like opening apps, Chrome, or building projects are handled AUTOMATICALLY — you do NOT need to describe doing them. Just TALK — have a conversation.
 If the user asks you to do something you genuinely can't do, say "I'm afraid that's beyond my current reach, sir."
 
-YOUR INTERFACE:
-The user interacts through a web browser showing a particle orb visualization. Controls:
-- **Three-dot menu** (top right): Settings, Restart Server, Fix Yourself
-- **Settings panel**: Name, preferences, orb color, voice, agent config
-- **Mute button**: Toggles listening on/off
-- **Restart Server**: Restarts backend. Useful if stuck.
-- **Fix Yourself**: Opens Claude Code in JARVIS project directory
-- **The orb**: Glowing particle visualization — reacts to voice, pulses when listening, swirls when thinking
+CRITICAL — ACTION TAG DISCIPLINE:
+DO NOT use action tags for casual remarks, dismissals, or passing comments. Examples of NO action:
+- User says "leave it" → just say "Understood, sir" (no action)
+- User says "never mind" → say "Right then, sir" (no action)
+- User says "scratch that" → say "Consider it cancelled, sir" (no action)
+- User says "don't bother" → acknowledge without acting
+- User says "forget I said anything" → no action, just acknowledge
+- User says "nah, I'm good" → acknowledge, don't search or open anything
+- User mentions a URL in passing conversation → do NOT [ACTION:BROWSE]
+- User asks a question about something → do NOT [ACTION:RESEARCH] unless they EXPLICITLY ask you to research it
+
+ONLY use action tags when the user is CLEARLY asking you to DO something RIGHT NOW:
+- "Open Chrome" → [ACTION:BROWSE]
+- "Search for X" → [ACTION:BROWSE] (clear instruction)
+- "Build me a Y" → [ACTION:BUILD] (clear instruction)
+- "Create a task" → [ACTION:ADD_TASK] (clear instruction)
+- "Remember that I like coffee" → [ACTION:REMEMBER] (clear instruction)
+
+GOLDEN RULE: If you're unsure whether something is a command or just a remark, JUST TALK BACK. It's always safer to ask "Did you want me to search for that, sir?" than to search without permission.
+
+YOUR INTERFACE (HUD — Iron Man-style):
+The user sees a full-screen Iron Man HUD (heads-up display) in a dark browser window.
+LAYOUT:
+- **Header (top)**: "J.A.R.V.I.S." wordmark (centre-left), live clock + date (centre), Mic button + Settings gear (top-right).
+- **Left strip**: "AGENTS" icon — click to expand the Agent Command drawer showing 4 sub-agents: ULTRON, ECHO, FRIDAY, VISION. Each has an animated reactor core, online/offline status, and usage bar. VISION is ONLINE and active — the others are offline placeholders.
+- **Centre**: The particle orb. It pulses when listening, swirls when thinking, reacts to audio when speaking. State label ("listening" / "thinking") appears at screen centre.
+- **Right strip**: Two icons — "APPS" (Quick Launch drawer with 6 app tiles: Chrome, Calc, File Explorer, Terminal, VS Code, Notepad) and "SYS" (System Telemetry drawer with live CPU/RAM gauges and disk bar).
+- **System Telemetry**: Shows live CPU %, RAM %, disk usage, refreshed every second.
+CONTROLS:
+- **Mic button** (header, top-right): Mute/unmute listening.
+- **Settings gear** (header, top-right): Opens settings panel with connection status, diagnostics (uptime, network), user preferences, voice options, orb color, and actions.
+- **Settings → Restart Server**: Restarts the Python backend. Use if JARVIS is stuck.
+- **Settings → Fix Yourself**: Triggers work mode — JARVIS opens Claude Code in the JARVIS project directory to self-repair.
+- **Quick Launch tiles**: Each tile sends a voice command to open the app (Chrome, Calculator, File Explorer, Terminal, VS Code, Notepad).
+- **Drawers**: All three drawers (Agents, Quick Launch, Telemetry) open/close by clicking the strip icons. Clicking outside closes them. Only one open at a time.
+WHAT YOU CANNOT SEE OR DO FROM THE UI ALONE:
+- You cannot read the user's screen unless [ACTION:SCREEN] is used.
+- You cannot directly modify the HUD layout — that requires code changes in the JARVIS project.
+- VISION is now ACTIVE — it answers factual knowledge questions via Wikipedia. ULTRON, ECHO, and FRIDAY remain offline placeholders.
+STAYING UP TO DATE:
+Your codebase is at {project_dir}. If you're unsure whether a capability has been added or removed, use [ACTION:PROMPT_PROJECT] jarvis ||| What are my current capabilities and interface layout? to read your own source code.
 
 SPEECH-TO-TEXT CORRECTIONS (speech recognition may mishear):
 - "Cloud code" or "cloud" = "Claude Code" or "Claude"
@@ -187,6 +223,12 @@ When you decide the user needs something DONE, include an action tag at the END 
 - [ACTION:ADD_NOTE] topic ||| content — save a note for future reference
 - [ACTION:COMPLETE_TASK] task_id — mark a task as done
 - [ACTION:REMEMBER] content — store an important fact about the user
+- [ACTION:ASK_VISION] plain English question — ask the VISION knowledge agent (Wikipedia). Use for factual questions: history, science, geography, biography, culture, technology concepts.
+  Examples: "Who invented the telephone?" → [ACTION:ASK_VISION] who invented the telephone
+            "What is photosynthesis?" → [ACTION:ASK_VISION] what is photosynthesis
+  VISION returns its answer directly as your spoken response — do NOT use [ACTION:RESEARCH] for encyclopedic facts.
+  Do NOT use for: weather, tasks, system actions, or things the user wants you to DO.
+  When VISION is uncertain: say "I'm afraid VISION couldn't confirm that, sir."
 
 CRITICAL: When user asks about their SCREEN — ALWAYS use [ACTION:SCREEN]. NEVER use [ACTION:PROMPT_PROJECT] for screen requests.
 IMPORTANT: When the user says "jump into X", "work on X", "check on X", "resume X" — ALWAYS use [ACTION:PROMPT_PROJECT].
@@ -797,7 +839,7 @@ def extract_action(response: str) -> tuple[str, dict | None]:
     Returns (clean_text_for_tts, action_dict_or_none).
     """
     match = _action_re.search(
-        r'\[ACTION:(BUILD|BROWSE|RESEARCH|OPEN_TERMINAL|OPEN_APP|PROMPT_PROJECT|ADD_TASK|ADD_NOTE|COMPLETE_TASK|REMEMBER|SCREEN)\]\s*(.*?)$',
+        r'\[ACTION:(BUILD|BROWSE|RESEARCH|OPEN_TERMINAL|OPEN_APP|PROMPT_PROJECT|ADD_TASK|ADD_NOTE|COMPLETE_TASK|REMEMBER|SCREEN|ASK_VISION)\]\s*(.*?)$',
         response, _action_re.DOTALL,
     )
     if match:
@@ -1108,12 +1150,16 @@ async def self_work_and_notify(session: WorkSession, prompt: str, ws):
 # TTS (Edge TTS)
 # ---------------------------------------------------------------------------
 
-async def synthesize_speech(text: str) -> Optional[bytes]:
-    """Generate speech using Microsoft Edge TTS."""
+async def synthesize_speech(text: str, voice: Optional[str] = None) -> Optional[bytes]:
+    """Generate speech using Microsoft Edge TTS.
+
+    voice overrides the default EDGE_TTS_VOICE — used for multilingual responses.
+    """
     try:
         import edge_tts
         import io
-        communicate = edge_tts.Communicate(text, EDGE_TTS_VOICE)
+        selected_voice = voice or EDGE_TTS_VOICE
+        communicate = edge_tts.Communicate(text, selected_voice)
         buf = io.BytesIO()
         async for chunk in communicate.stream():
             if chunk["type"] == "audio":
@@ -1122,7 +1168,7 @@ async def synthesize_speech(text: str) -> Optional[bytes]:
         if audio:
             _session_tokens["tts_calls"] += 1
             _append_usage_entry(0, 0, "tts")
-            log.info(f"Edge TTS: {len(audio)} bytes")
+            log.info(f"Edge TTS ({selected_voice}): {len(audio)} bytes")
             return audio
     except Exception as e:
         log.error(f"Edge TTS failed: {e}")
@@ -1286,6 +1332,10 @@ task_manager = ClaudeTaskManager(max_concurrent=3)
 cached_projects: list[dict] = []
 recently_built: list[dict] = []  # [{"name": str, "path": str, "time": float}]
 dispatch_registry = DispatchRegistry()
+
+# VISION — knowledge agent (Wikipedia + persistent learning)
+_VISION_DB   = Path(__file__).parent / "data" / "vision_knowledge.db"
+vision_agent = VisionAgent(str(_VISION_DB))
 
 # Usage tracking — logs every call with timestamp, persists to disk
 _USAGE_FILE = Path(__file__).parent / "data" / "usage_log.jsonl"
@@ -1548,6 +1598,40 @@ def _scan_projects_sync() -> list[dict]:
     return projects
 
 
+def detect_dismissal_or_casual(text: str) -> str | None:
+    """Detect casual remarks that don't need full LLM processing.
+
+    Returns a dismissal response if detected, None otherwise.
+    """
+    t = text.lower().strip()
+
+    # Dismissal/cancellation phrases — respond immediately without action
+    dismissals = {
+        "leave it": "Right then, sir.",
+        "nevermind": "Understood, sir.",
+        "never mind": "Understood, sir.",
+        "scratch that": "Cancelled, sir.",
+        "forget it": "Consider it forgotten, sir.",
+        "don't bother": "Say no more, sir.",
+        "nah": "Very good, sir.",
+        "nope": "Understood, sir.",
+        "no": "Right then, sir.",
+        "forget i said anything": "As if it never happened, sir.",
+        "forget that": "Forgotten, sir.",
+        "scratch it": "Consider it cancelled, sir.",
+    }
+
+    for phrase, response in dismissals.items():
+        if t == phrase or t.startswith(phrase + " ") or t.startswith(phrase + "."):
+            return response
+
+    # Very short acknowledgments — don't search or execute for these
+    if t in ["ok", "okay", "cool", "alright", "right", "yes", "yeah", "yep", "fine", "good"]:
+        return "Understood, sir."
+
+    return None
+
+
 def detect_action_fast(text: str) -> dict | None:
     """Keyword-based action detection — ONLY for short, obvious commands.
 
@@ -1612,6 +1696,14 @@ def detect_action_fast(text: str) -> dict | None:
                              "what's the cost", "whats the cost", "api cost", "token usage",
                              "how expensive", "what's my bill"]):
         return {"action": "check_usage"}
+
+    # VISION feedback shortcuts
+    if any(p in t for p in ["vision was wrong", "vision got it wrong", "vision is wrong",
+                             "that's wrong", "thats wrong", "incorrect", "vision made a mistake"]):
+        return {"action": "vision_feedback", "correct": False}
+    if any(p in t for p in ["vision was right", "vision got it right", "vision is right",
+                             "that's correct", "thats correct", "vision was correct"]):
+        return {"action": "vision_feedback", "correct": True}
 
     return None  # Everything else goes to the LLM for conversational routing
 
@@ -1945,6 +2037,9 @@ async def voice_handler(ws: WebSocket):
     session_buffer: list[dict] = []  # ALL messages, never truncated
     session_summary: str = ""  # Rolling summary of older conversation
     summary_update_pending: bool = False
+
+    # Multilingual session state — persists across turns
+    _session_lang: Optional[str] = None  # ISO 639-1 code if non-English, else None
     messages_since_last_summary: int = 0
 
     log.info("Voice WebSocket connected")
@@ -1982,6 +2077,34 @@ async def voice_handler(ws: WebSocket):
             user_text = apply_speech_corrections(msg.get("text", "").strip())
             if not user_text:
                 continue
+
+            # Multilingual detection
+            # 1. Trust lang hint from frontend (Web Speech API recognition.lang)
+            frontend_lang = msg.get("lang", "")  # e.g. "hi-IN", "sv-SE"
+            if frontend_lang:
+                base_lang = frontend_lang.split("-")[0].lower()
+                if is_supported(base_lang):
+                    _session_lang = base_lang
+                elif base_lang == "en":
+                    _session_lang = None
+
+            # 2. Fallback: detect from text content
+            if _session_lang is None and frontend_lang.startswith("en"):
+                pass  # trust English hint, skip detection
+            elif _session_lang is None:
+                detected_lang = detect_language(user_text)
+                if is_supported(detected_lang):
+                    _session_lang = detected_lang
+                elif detected_lang and detected_lang.startswith("en"):
+                    _session_lang = None
+
+            # Translate non-English input to English for LLM + VISION processing
+            if _session_lang:
+                user_text_native = user_text
+                user_text = translate(user_text, _session_lang, "en")
+                log.info(f"Multilingual [{get_language_name(_session_lang)}]: {user_text_native!r} → {user_text!r}")
+            else:
+                user_text_native = user_text
 
             # Cancel any in-flight response
             _current_response_id += 1
@@ -2127,161 +2250,191 @@ async def voice_handler(ws: WebSocket):
 
                 # ── CHAT MODE: fast keyword detection + Haiku ──
                 else:
-                    action = detect_action_fast(user_text)
-
-                    if action:
-                        if action["action"] == "open_terminal":
-                            response_text = await handle_open_terminal()
-                        elif action["action"] == "show_recent":
-                            response_text = await handle_show_recent()
-                        elif action["action"] == "describe_screen":
-                            response_text = "Taking a look now, sir."
-                            asyncio.create_task(_lookup_and_report("screen", _do_screen_lookup, ws, history=history, voice_state=voice_state))
-                        elif action["action"] == "open_app":
-                            app_name = action.get("target", "")
-                            result = await open_app(app_name)
-                            response_text = result["confirmation"]
-                        elif action["action"] == "check_dispatch":
-                            recent = dispatch_registry.get_most_recent()
-                            if not recent:
-                                response_text = "No recent builds on record, sir."
-                            else:
-                                name = recent["project_name"]
-                                status = recent["status"]
-                                if status == "building" or status == "pending":
-                                    elapsed = int(time.time() - recent["updated_at"])
-                                    response_text = f"Still working on {name}, sir. Been at it for {elapsed} seconds."
-                                elif status == "completed":
-                                    response_text = recent.get("summary") or f"{name} is complete, sir."
-                                elif status in ("failed", "timeout"):
-                                    response_text = f"{name} ran into problems, sir."
-                                else:
-                                    response_text = f"{name} is {status}, sir."
-                        elif action["action"] == "check_tasks":
-                            tasks = get_open_tasks()
-                            response_text = format_tasks_for_voice(tasks)
-                        elif action["action"] == "check_usage":
-                            response_text = get_usage_summary()
-                        else:
-                            response_text = "Understood, sir."
+                    # Check for dismissal/casual remarks first — respond immediately
+                    dismissal_response = detect_dismissal_or_casual(user_text)
+                    if dismissal_response:
+                        response_text = dismissal_response
                     else:
-                        response_text = await generate_response(
-                                user_text, task_manager,
-                                cached_projects, history,
-                                last_response=last_jarvis_response,
-                                session_summary=session_summary,
-                            )
-
-                        # Check for action tags embedded in LLM response
-                        clean_response, embedded_action = extract_action(response_text)
-                        if embedded_action:
-                            log.info(f"LLM embedded action: {embedded_action}")
-                            response_text = clean_response
-                            # Ensure there's always something to speak
-                            if not response_text.strip():
-                                action_type = embedded_action["action"]
-                                if action_type == "prompt_project":
-                                    proj = embedded_action["target"].split("|||")[0].strip()
-                                    response_text = f"Connecting to {proj} now, sir."
-                                elif action_type == "build":
-                                    response_text = "On it, sir."
-                                elif action_type == "research":
-                                    response_text = "Looking into that now, sir."
-                                else:
-                                    response_text = "Right away, sir."
-
-                            if embedded_action["action"] == "build":
-                                # Build in background — JARVIS stays conversational
-                                target = embedded_action["target"]
-                                name = _generate_project_name(target)
-                                path = str(Path.home() / "Desktop" / name)
-                                os.makedirs(path, exist_ok=True)
-
-                                # Write detailed CLAUDE.md
-                                Path(path, "CLAUDE.md").write_text(
-                                    f"# Task\n\n{target}\n\n"
-                                    "## Instructions\n"
-                                    "- BUILD THIS NOW. Do not ask clarifying questions.\n"
-                                    "- Use your best judgment for any design/architecture decisions.\n"
-                                    "- Write complete, working code files — not plans or specs.\n"
-                                    "- If it's a web app: use React + Vite + Tailwind unless specified otherwise.\n"
-                                    "- Make it look polished and professional. Modern UI, clean layout.\n"
-                                    "- Ensure it runs with a single command (npm run dev or similar).\n"
-                                    "- If you reference a real product's UI (e.g. 'Zillow clone'), match their actual layout and features closely.\n"
-                                    "- Use realistic mock data, not placeholder Lorem Ipsum.\n"
-                                    "- After building, start the dev server and verify the app loads without errors.\n"
-                                    "- IMPORTANT: Your LAST line of output MUST be exactly: RUNNING_AT=http://localhost:PORT (the actual port the dev server is using)\n"
-                                )
-
-                                # Register and dispatch
-                                did = dispatch_registry.register(name, path, target)
-                                asyncio.create_task(
-                                    _execute_prompt_project(name, target, work_session, ws, dispatch_id=did, history=history, voice_state=voice_state)
-                                )
-                            elif embedded_action["action"] == "browse":
-                                asyncio.create_task(_execute_browse(embedded_action["target"]))
-                            elif embedded_action["action"] == "research":
-                                # Research enters work mode too
-                                name = _generate_project_name(embedded_action["target"])
-                                path = str(Path.home() / "Desktop" / name)
-                                os.makedirs(path, exist_ok=True)
-                                await work_session.start(path)
-                                asyncio.create_task(
-                                    self_work_and_notify(work_session, embedded_action["target"], ws)
-                                )
-                            elif embedded_action["action"] == "open_terminal":
-                                asyncio.create_task(_execute_open_terminal())
-                            elif embedded_action["action"] == "prompt_project":
-                                target = embedded_action["target"]
-                                if "|||" in target:
-                                    proj_name, _, prompt = target.partition("|||")
-                                    proj_name = proj_name.strip()
-                                    prompt = prompt.strip()
-                                    # Check for recent completed dispatch before re-dispatching
-                                    recent = dispatch_registry.get_recent_for_project(proj_name)
-                                    if recent and recent.get("summary"):
-                                        log.info(f"Using recent dispatch result for {proj_name} instead of re-dispatching")
-                                        response_text = recent["summary"]
-                                        history.append({"role": "assistant", "content": f"[Previous dispatch result for {proj_name}]: {recent['summary']}"})
-                                    else:
-                                        asyncio.create_task(
-                                            _execute_prompt_project(proj_name, prompt, work_session, ws, history=history, voice_state=voice_state)
-                                        )
-                                else:
-                                    log.warning(f"PROMPT_PROJECT missing ||| delimiter: {target}")
-                            elif embedded_action["action"] == "add_task":
-                                target = embedded_action["target"]
-                                parts = target.split("|||")
-                                if len(parts) >= 2:
-                                    priority = parts[0].strip() or "medium"
-                                    title = parts[1].strip()
-                                    desc = parts[2].strip() if len(parts) > 2 else ""
-                                    due = parts[3].strip() if len(parts) > 3 else ""
-                                    create_task(title=title, description=desc, priority=priority, due_date=due)
-                                    log.info(f"Task created: {title}")
-                            elif embedded_action["action"] == "add_note":
-                                target = embedded_action["target"]
-                                if "|||" in target:
-                                    topic, _, content = target.partition("|||")
-                                    create_note(content=content.strip(), topic=topic.strip())
-                                else:
-                                    create_note(content=target)
-                                log.info(f"Note created")
-                            elif embedded_action["action"] == "complete_task":
-                                try:
-                                    task_id = int(embedded_action["target"].strip())
-                                    complete_task(task_id)
-                                    log.info(f"Task {task_id} completed")
-                                except ValueError:
-                                    pass
-                            elif embedded_action["action"] == "remember":
-                                remember(embedded_action["target"].strip(), mem_type="fact", importance=7)
-                                log.info(f"Memory stored: {embedded_action['target'][:60]}")
-                            elif embedded_action["action"] == "open_app":
-                                app_target = embedded_action["target"].strip()
-                                asyncio.create_task(_execute_open_app(app_target))
-                            elif embedded_action["action"] == "screen":
+                        action = detect_action_fast(user_text)
+                        if action:
+                            if action["action"] == "open_terminal":
+                                response_text = await handle_open_terminal()
+                            elif action["action"] == "show_recent":
+                                response_text = await handle_show_recent()
+                            elif action["action"] == "describe_screen":
+                                response_text = "Taking a look now, sir."
                                 asyncio.create_task(_lookup_and_report("screen", _do_screen_lookup, ws, history=history, voice_state=voice_state))
+                            elif action["action"] == "open_app":
+                                app_name = action.get("target", "")
+                                result = await open_app(app_name)
+                                response_text = result["confirmation"]
+                            elif action["action"] == "check_dispatch":
+                                recent = dispatch_registry.get_most_recent()
+                                if not recent:
+                                    response_text = "No recent builds on record, sir."
+                                else:
+                                    name = recent["project_name"]
+                                    status = recent["status"]
+                                    if status == "building" or status == "pending":
+                                        elapsed = int(time.time() - recent["updated_at"])
+                                        response_text = f"Still working on {name}, sir. Been at it for {elapsed} seconds."
+                                    elif status == "completed":
+                                        response_text = recent.get("summary") or f"{name} is complete, sir."
+                                    elif status in ("failed", "timeout"):
+                                        response_text = f"{name} ran into problems, sir."
+                                    else:
+                                        response_text = f"{name} is {status}, sir."
+                            elif action["action"] == "check_tasks":
+                                tasks = get_open_tasks()
+                                response_text = format_tasks_for_voice(tasks)
+                            elif action["action"] == "check_usage":
+                                response_text = get_usage_summary()
+                            elif action["action"] == "vision_feedback":
+                                is_correct = action.get("correct", False)
+                                last_q = history[-2]["content"] if len(history) >= 2 else ""
+                                if last_q:
+                                    asyncio.create_task(vision_agent.feedback(last_q, is_correct))
+                                verdict = "noted as correct" if is_correct else "noted — VISION will adjust"
+                                response_text = f"Feedback {verdict}, sir."
+                            else:
+                                response_text = "Understood, sir."
+                        else:
+                            response_text = await generate_response(
+                                    user_text, task_manager,
+                                    cached_projects, history,
+                                    last_response=last_jarvis_response,
+                                    session_summary=session_summary,
+                                )
+
+                            # Check for action tags embedded in LLM response
+                            clean_response, embedded_action = extract_action(response_text)
+                            if embedded_action:
+                                log.info(f"LLM embedded action: {embedded_action}")
+                                response_text = clean_response
+                                # Ensure there's always something to speak
+                                if not response_text.strip():
+                                    action_type = embedded_action["action"]
+                                    if action_type == "prompt_project":
+                                        proj = embedded_action["target"].split("|||")[0].strip()
+                                        response_text = f"Connecting to {proj} now, sir."
+                                    elif action_type == "build":
+                                        response_text = "On it, sir."
+                                    elif action_type == "research":
+                                        response_text = "Looking into that now, sir."
+                                    elif action_type == "ask_vision":
+                                        response_text = "Consulting VISION, sir."
+                                    else:
+                                        response_text = "Right away, sir."
+
+                                if embedded_action["action"] == "build":
+                                    # Build in background — JARVIS stays conversational
+                                    target = embedded_action["target"]
+                                    name = _generate_project_name(target)
+                                    path = str(Path.home() / "Desktop" / name)
+                                    os.makedirs(path, exist_ok=True)
+
+                                    # Write detailed CLAUDE.md
+                                    Path(path, "CLAUDE.md").write_text(
+                                        f"# Task\n\n{target}\n\n"
+                                        "## Instructions\n"
+                                        "- BUILD THIS NOW. Do not ask clarifying questions.\n"
+                                        "- Use your best judgment for any design/architecture decisions.\n"
+                                        "- Write complete, working code files — not plans or specs.\n"
+                                        "- If it's a web app: use React + Vite + Tailwind unless specified otherwise.\n"
+                                        "- Make it look polished and professional. Modern UI, clean layout.\n"
+                                        "- Ensure it runs with a single command (npm run dev or similar).\n"
+                                        "- If you reference a real product's UI (e.g. 'Zillow clone'), match their actual layout and features closely.\n"
+                                        "- Use realistic mock data, not placeholder Lorem Ipsum.\n"
+                                        "- After building, start the dev server and verify the app loads without errors.\n"
+                                        "- IMPORTANT: Your LAST line of output MUST be exactly: RUNNING_AT=http://localhost:PORT (the actual port the dev server is using)\n"
+                                    )
+
+                                    # Register and dispatch
+                                    did = dispatch_registry.register(name, path, target)
+                                    asyncio.create_task(
+                                        _execute_prompt_project(name, target, work_session, ws, dispatch_id=did, history=history, voice_state=voice_state)
+                                    )
+                                elif embedded_action["action"] == "browse":
+                                    asyncio.create_task(_execute_browse(embedded_action["target"]))
+                                elif embedded_action["action"] == "research":
+                                    # Research enters work mode too
+                                    name = _generate_project_name(embedded_action["target"])
+                                    path = str(Path.home() / "Desktop" / name)
+                                    os.makedirs(path, exist_ok=True)
+                                    await work_session.start(path)
+                                    asyncio.create_task(
+                                        self_work_and_notify(work_session, embedded_action["target"], ws)
+                                    )
+                                elif embedded_action["action"] == "open_terminal":
+                                    asyncio.create_task(_execute_open_terminal())
+                                elif embedded_action["action"] == "prompt_project":
+                                    target = embedded_action["target"]
+                                    if "|||" in target:
+                                        proj_name, _, prompt = target.partition("|||")
+                                        proj_name = proj_name.strip()
+                                        prompt = prompt.strip()
+                                        # Check for recent completed dispatch before re-dispatching
+                                        recent = dispatch_registry.get_recent_for_project(proj_name)
+                                        if recent and recent.get("summary"):
+                                            log.info(f"Using recent dispatch result for {proj_name} instead of re-dispatching")
+                                            response_text = recent["summary"]
+                                            history.append({"role": "assistant", "content": f"[Previous dispatch result for {proj_name}]: {recent['summary']}"})
+                                        else:
+                                            asyncio.create_task(
+                                                _execute_prompt_project(proj_name, prompt, work_session, ws, history=history, voice_state=voice_state)
+                                            )
+                                    else:
+                                        log.warning(f"PROMPT_PROJECT missing ||| delimiter: {target}")
+                                elif embedded_action["action"] == "add_task":
+                                    target = embedded_action["target"]
+                                    parts = target.split("|||")
+                                    if len(parts) >= 2:
+                                        priority = parts[0].strip() or "medium"
+                                        title = parts[1].strip()
+                                        desc = parts[2].strip() if len(parts) > 2 else ""
+                                        due = parts[3].strip() if len(parts) > 3 else ""
+                                        create_task(title=title, description=desc, priority=priority, due_date=due)
+                                        log.info(f"Task created: {title}")
+                                elif embedded_action["action"] == "add_note":
+                                    target = embedded_action["target"]
+                                    if "|||" in target:
+                                        topic, _, content = target.partition("|||")
+                                        create_note(content=content.strip(), topic=topic.strip())
+                                    else:
+                                        create_note(content=target)
+                                    log.info(f"Note created")
+                                elif embedded_action["action"] == "complete_task":
+                                    try:
+                                        task_id = int(embedded_action["target"].strip())
+                                        complete_task(task_id)
+                                        log.info(f"Task {task_id} completed")
+                                    except ValueError:
+                                        pass
+                                elif embedded_action["action"] == "remember":
+                                    remember(embedded_action["target"].strip(), mem_type="fact", importance=7)
+                                    log.info(f"Memory stored: {embedded_action['target'][:60]}")
+                                elif embedded_action["action"] == "ask_vision":
+                                    question = embedded_action["target"].strip()
+                                    if not response_text.strip():
+                                        response_text = "One moment, sir."
+                                    _AGENT_STATES["vision"]["usage"] = 80
+                                    try:
+                                        vision_resp = await vision_agent.ask(question)
+                                        if vision_resp.confidence != "uncertain":
+                                            response_text = vision_resp.answer
+                                        else:
+                                            response_text = vision_resp.answer
+                                    except Exception as _ve:
+                                        log.error(f"VISION call failed: {_ve}")
+                                        response_text = "I'm afraid VISION is unavailable at the moment, sir."
+                                    finally:
+                                        _AGENT_STATES["vision"]["usage"] = vision_agent.get_status()["usage"]
+                                    log.info(f"VISION answered: {response_text[:80]}")
+                                elif embedded_action["action"] == "open_app":
+                                    app_target = embedded_action["target"].strip()
+                                    asyncio.create_task(_execute_open_app(app_target))
+                                elif embedded_action["action"] == "screen":
+                                    asyncio.create_task(_lookup_and_report("screen", _do_screen_lookup, ws, history=history, voice_state=voice_state))
 
                 # Update history
                 history.append({"role": "user", "content": user_text})
@@ -2318,14 +2471,20 @@ async def voice_handler(ws: WebSocket):
                 if _should_remember:
                     asyncio.create_task(extract_memories(user_text, response_text))
 
-                # TTS — send response; abort cleanly if client disconnected
+                # TTS — translate back and use native voice if session is multilingual
                 tts = strip_markdown_for_tts(response_text)
+                tts_voice: Optional[str] = None
+                if _session_lang:
+                    tts = translate(tts, "en", _session_lang)
+                    tts_voice = get_voice(_session_lang)
+                    log.info(f"Multilingual TTS [{get_language_name(_session_lang)}] voice={tts_voice}")
+
                 try:
                     await ws.send_json({"type": "status", "state": "speaking"})
                 except (WebSocketDisconnect, RuntimeError):
                     log.debug("Client disconnected before TTS — aborting response")
                     break
-                audio = await synthesize_speech(tts)
+                audio = await synthesize_speech(tts, voice=tts_voice)
                 try:
                     if audio:
                         await ws.send_json({"type": "audio", "data": base64.b64encode(audio).decode(), "text": response_text})
@@ -2511,6 +2670,49 @@ async def api_fix_self():
     log.info(f"Work mode: JARVIS repo opened for self-improvement — {result['confirmation']}")
     return {"status": "work_mode_active", "path": jarvis_dir}
 
+
+# ---------------------------------------------------------------------------
+# System stats + Agent status endpoints
+# ---------------------------------------------------------------------------
+
+try:
+    import psutil as _psutil
+    _PSUTIL_OK = True
+except ImportError:
+    _PSUTIL_OK = False
+    log.warning("psutil not installed — /api/system/stats will return zeros. Run: pip install psutil")
+
+@app.get("/api/system/stats")
+async def api_system_stats():
+    """Real-time PC hardware stats for the HUD telemetry panel."""
+    if not _PSUTIL_OK:
+        return {"cpu": 0, "memory": 0, "memory_label": "?/? GB",
+                "disk": 0, "disk_label": "?/? GB", "available": False}
+    cpu  = _psutil.cpu_percent(interval=0.1)
+    mem  = _psutil.virtual_memory()
+    disk = _psutil.disk_usage('/')
+    return {
+        "available": True,
+        "cpu":          round(cpu, 1),
+        "memory":       round(mem.percent, 1),
+        "memory_label": f"{mem.used/(1024**3):.1f}/{mem.total/(1024**3):.1f} GB",
+        "disk":         round(disk.percent, 1),
+        "disk_label":   f"{disk.used/(1024**3):.0f}/{disk.total/(1024**3):.0f} GB",
+    }
+
+# Agent states — VISION is active; others are offline placeholders
+_AGENT_STATES: dict = {
+    "ultron": {"online": False, "usage": 0},
+    "echo":   {"online": False, "usage": 0},
+    "friday": {"online": False, "usage": 0},
+    "vision": {"online": True,  "usage": 0},
+}
+
+@app.get("/api/agents/status")
+async def api_agents_status():
+    """Returns online/offline + usage% for each named agent."""
+    _AGENT_STATES["vision"] = vision_agent.get_status()
+    return _AGENT_STATES
 
 # ---------------------------------------------------------------------------
 # Static file serving (frontend)

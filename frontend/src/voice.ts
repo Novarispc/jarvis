@@ -11,26 +11,32 @@ export interface VoiceInput {
   stop(): void;
   pause(): void;
   resume(): void;
+  setLang(langCode: string): void;
+  getLang(): string;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 declare const webkitSpeechRecognition: any;
 
 export function createVoiceInput(
-  onTranscript: (text: string) => void,
+  onTranscript: (text: string, lang: string) => void,
   onError: (msg: string) => void
 ): VoiceInput {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const SR = (window as any).SpeechRecognition || (typeof webkitSpeechRecognition !== "undefined" ? webkitSpeechRecognition : null);
   if (!SR) {
     onError("Speech recognition not supported in this browser");
-    return { start() {}, stop() {}, pause() {}, resume() {} };
+    return { start() {}, stop() {}, pause() {}, resume() {}, setLang() {}, getLang() { return "en-US"; } };
   }
 
   const recognition = new SR();
   recognition.continuous = true;
-  recognition.interimResults = true;
-  recognition.lang = "en-US";
+  recognition.interimResults = false;   // final results only — avoids noise mid-word
+  recognition.maxAlternatives = 1;
+
+  // Read language from localStorage (set by settings panel)
+  const storedLang = localStorage.getItem("jarvis-lang") || "en-US";
+  recognition.lang = storedLang;
 
   let shouldListen = false;
   let paused = false;
@@ -46,12 +52,31 @@ export function createVoiceInput(
     }, delayMs);
   }
 
+  // Noise-rejection: single common filler words that background audio triggers
+  const NOISE_WORDS = new Set([
+    "the","a","an","and","or","but","so","yeah","yes","no","okay","ok",
+    "um","uh","hmm","hm","oh","ah","hey","hi","bye","right","like",
+  ]);
+
   recognition.onresult = (event: any) => {
     for (let i = event.resultIndex; i < event.results.length; i++) {
-      if (event.results[i].isFinal) {
-        const text = event.results[i][0].transcript.trim();
-        if (text) onTranscript(text);
-      }
+      if (!event.results[i].isFinal) continue;
+
+      const alt   = event.results[i][0];
+      const text  = alt.transcript.trim();
+      const conf  = alt.confidence as number;   // 0–1; may be 0 if browser doesn't report it
+      const words = text.split(/\s+/).filter(Boolean);
+
+      // Reject if confidence is reported AND below threshold
+      if (conf > 0 && conf < 0.45) continue;
+
+      // Reject single-word noise triggers
+      if (words.length === 1 && NOISE_WORDS.has(words[0].toLowerCase())) continue;
+
+      // Reject very short utterances (likely ambient sound)
+      if (words.length < 2 && text.length < 4) continue;
+
+      if (text) onTranscript(text, recognition.lang);
     }
   };
 
@@ -103,6 +128,19 @@ export function createVoiceInput(
           // Already started
         }
       }
+    },
+    setLang(langCode: string) {
+      // Stop recognition, update lang, restart — no page reload needed
+      recognition.stop();
+      recognition.lang = langCode;
+      localStorage.setItem("jarvis-lang", langCode);
+      if (restartTimer) { clearTimeout(restartTimer); restartTimer = null; }
+      if (shouldListen && !paused) {
+        scheduleRestart(200);
+      }
+    },
+    getLang() {
+      return recognition.lang as string;
     },
   };
 }

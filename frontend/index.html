@@ -14,244 +14,363 @@
   <!-- Full-screen orb canvas — sits behind everything -->
   <canvas id="orb-canvas"></canvas>
 
-  <!-- HUD System Layout -->
+  <!-- ── Corner brackets ──────────────────────────────────────── -->
+  <div class="corner-bracket tl"></div>
+  <div class="corner-bracket tr"></div>
+  <div class="corner-bracket bl"></div>
+  <div class="corner-bracket br"></div>
+
+  <!-- ── Title group — animated reactor icon + title, centered top ── -->
+  <div class="hud-title-group">
+    <svg class="hud-logo-inline" width="37" height="37" viewBox="0 0 64 64" fill="none">
+      <!-- Outermost border -->
+      <circle cx="32" cy="32" r="31" fill="none" stroke="var(--primary)" stroke-width="0.9" opacity="0.45"/>
+
+      <!-- PRIMARY scan arc — bright comet sweeping forward -->
+      <circle cx="32" cy="32" r="29" fill="none" stroke="var(--primary)" stroke-width="3.2"
+        stroke-dasharray="52 130" opacity="1"
+        style="animation:ri-scan 1.9s linear infinite;transform-origin:32px 32px;
+               filter:drop-shadow(0 0 10px var(--primary-glow)) drop-shadow(0 0 3px var(--primary));"/>
+
+      <!-- SECONDARY reverse scan arc -->
+      <circle cx="32" cy="32" r="26" fill="none" stroke="var(--primary)" stroke-width="1.5"
+        stroke-dasharray="22 141" opacity="0.75"
+        style="animation:ri-scan-rev 1.4s linear infinite;transform-origin:32px 32px;
+               filter:drop-shadow(0 0 4px var(--primary-glow));"/>
+
+      <!-- Outer tick ring — slow spin -->
+      <circle cx="32" cy="32" r="22" fill="none" stroke="var(--primary)" stroke-width="1.1"
+        stroke-dasharray="3 9.4" opacity="0.7"
+        style="animation:ri-spin 9s linear infinite;transform-origin:32px 32px;"/>
+
+      <!-- Cardinal cross-hairs -->
+      <line x1="2" y1="32" x2="15" y2="32" stroke="var(--primary)" stroke-width="1.1" opacity="0.85"/>
+      <line x1="49" y1="32" x2="62" y2="32" stroke="var(--primary)" stroke-width="1.1" opacity="0.85"/>
+      <line x1="32" y1="2" x2="32" y2="15" stroke="var(--primary)" stroke-width="1.1" opacity="0.85"/>
+      <line x1="32" y1="49" x2="32" y2="62" stroke="var(--primary)" stroke-width="1.1" opacity="0.85"/>
+
+      <!-- Diagonal cross-hairs — blink sequentially -->
+      <line x1="13" y1="13" x2="21" y2="21" stroke="var(--primary)" stroke-width="1"
+        style="animation:ri-blink 1.6s ease-in-out infinite 0s;"/>
+      <line x1="51" y1="13" x2="43" y2="21" stroke="var(--primary)" stroke-width="1"
+        style="animation:ri-blink 1.6s ease-in-out infinite 0.4s;"/>
+      <line x1="13" y1="51" x2="21" y2="43" stroke="var(--primary)" stroke-width="1"
+        style="animation:ri-blink 1.6s ease-in-out infinite 0.8s;"/>
+      <line x1="51" y1="51" x2="43" y2="43" stroke="var(--primary)" stroke-width="1"
+        style="animation:ri-blink 1.6s ease-in-out infinite 1.2s;"/>
+
+      <!-- Static middle ring -->
+      <circle cx="32" cy="32" r="17" fill="none" stroke="var(--primary)" stroke-width="0.8" opacity="0.5"/>
+
+      <!-- Counter-spinning mid ticks -->
+      <circle cx="32" cy="32" r="14" fill="none" stroke="var(--primary)" stroke-width="1.6"
+        stroke-dasharray="8 6.4" opacity="0.8"
+        style="animation:ri-spin-rev 2.8s linear infinite;transform-origin:32px 32px;"/>
+
+      <!-- Fast inner ring — energy charging feel -->
+      <circle cx="32" cy="32" r="10" fill="none" stroke="var(--primary)" stroke-width="2.2"
+        stroke-dasharray="5 2.7" opacity="0.95"
+        style="animation:ri-spin 1.2s linear infinite;transform-origin:32px 32px;
+               filter:drop-shadow(0 0 6px var(--primary-glow));"/>
+
+      <!-- Core glow fill — breathes -->
+      <circle cx="32" cy="32" r="7" fill="var(--primary)" opacity="0.28"
+        style="animation:ri-pulse 1.5s ease-in-out infinite;
+               filter:drop-shadow(0 0 18px var(--primary-glow));"/>
+
+      <!-- Core border ring -->
+      <circle cx="32" cy="32" r="6" fill="none" stroke="var(--primary)" stroke-width="2" opacity="1"
+        style="filter:drop-shadow(0 0 7px var(--primary-glow));"/>
+
+      <!-- Bright centre dot -->
+      <circle cx="32" cy="32" r="3" fill="var(--primary)" opacity="1"
+        style="animation:ri-pulse 1.5s ease-in-out infinite 0.75s;
+               filter:drop-shadow(0 0 12px var(--primary-glow));"/>
+
+      <!-- White-hot centre -->
+      <circle cx="32" cy="32" r="1.4" fill="white" opacity="1"/>
+    </svg>
+    <div class="hud-title" data-abbr="Just A Rather Very Intelligent System">J.A.R.V.I.S.</div>
+  </div>
+
+  <!-- ── Language pill — bottom of title group ─────────────────── -->
+  <div class="lang-pill" id="lang-pill" title="Click to change language">
+    <span class="lang-pill-icon">🌐</span>
+    <span id="lang-pill-label">EN</span>
+  </div>
+
+  <!-- ── Language selector flyout ──────────────────────────────── -->
+  <div class="lang-flyout" id="lang-flyout">
+    <div class="lang-flyout-hdr">LANGUAGE</div>
+    <button class="lang-opt active" data-lang="en-US"  data-label="EN">English</button>
+    <button class="lang-opt" data-lang="hi-IN"  data-label="हिं">Hindi</button>
+    <button class="lang-opt" data-lang="ta-IN"  data-label="த">Tamil</button>
+    <button class="lang-opt" data-lang="te-IN"  data-label="తె">Telugu</button>
+    <button class="lang-opt" data-lang="ml-IN"  data-label="മ">Malayalam</button>
+    <button class="lang-opt" data-lang="kn-IN"  data-label="ಕ">Kannada</button>
+    <button class="lang-opt" data-lang="sv-SE"  data-label="SV">Swedish</button>
+  </div>
+
+  <!-- ── Date / Time — bottom right, no border ────────────────── -->
+  <div class="hud-clock">
+    <div id="hud-time" class="hud-clock-time">00:00:00</div>
+    <div id="hud-date" class="hud-clock-date">--- -- ---</div>
+  </div>
+
+  <!-- ── HUD grid (strips + center only) ───────────────────────── -->
   <div class="hud-system">
 
-    <!-- Corner brackets (cosmetic) -->
-    <div class="corner-bracket tl"></div>
-    <div class="corner-bracket tr"></div>
-    <div class="corner-bracket bl"></div>
-    <div class="corner-bracket br"></div>
-
-    <!-- ── Header ──────────────────────────────────────────────── -->
-    <header class="hud-header">
-      <div class="hud-wordmark">J.A.R.V.I.S.</div>
-      <div class="hud-pills">
-        <div class="hud-pill live">LIVE</div>
-        <div class="hud-pill" id="hud-time">00:00:00</div>
-        <div class="hud-pill" id="hud-date">--- -- ---</div>
-      </div>
-    </header>
-
-    <!-- ── Left Panel ──────────────────────────────────────────── -->
-    <aside class="hud-left">
-
-      <!-- Quick Launch -->
-      <div class="hud-panel">
-        <div class="hud-panel-hdr">
-          <span class="panel-dot-pulse"></span>
-          <span class="panel-label">QUICK LAUNCH</span>
-        </div>
-        <div class="launcher-grid">
-          <button class="hex-btn" data-cmd="Open Chrome"><span>CHR</span></button>
-          <button class="hex-btn" data-cmd="Open Calculator"><span>CALC</span></button>
-          <button class="hex-btn" data-cmd="Open File Explorer"><span>EXP</span></button>
-          <button class="hex-btn" data-cmd="Open Terminal"><span>TERM</span></button>
-          <button class="hex-btn" data-cmd="Open VS Code"><span>CODE</span></button>
-          <button class="hex-btn" data-cmd="Open Notepad"><span>NOTE</span></button>
-        </div>
-      </div>
-
-      <!-- Reactor Status -->
-      <div class="hud-panel">
-        <div class="hud-panel-hdr">
-          <span class="panel-dot-pulse"></span>
-          <span class="panel-label">REACTOR STATUS</span>
-        </div>
-        <div class="reactor-display">
-          <div class="reactor-meta">
-            <span id="reactor-online-text" class="reactor-online">● ONLINE</span>
-            <span id="reactor-pct" class="reactor-pct">100%</span>
-          </div>
-          <svg id="reactor-svg" class="reactor-svg" viewBox="0 0 100 100">
-            <!-- Outer rings -->
-            <circle cx="50" cy="50" r="46" fill="none" stroke="var(--primary)" stroke-width="2" id="r-outer"/>
-            <circle cx="50" cy="50" r="38" fill="none" stroke="var(--border-2)" stroke-width="1"/>
-            <circle cx="50" cy="50" r="32" fill="none" stroke="var(--border-2)" stroke-width="1"/>
-            <!-- Charging rings (stroke-dashoffset updated by JS) -->
-            <circle cx="50" cy="50" r="28" fill="none" stroke="var(--primary)" stroke-width="2" id="r-ring1"
-              style="stroke-dasharray:176; stroke-dashoffset:0; transform:rotate(-90deg); transform-origin:50% 50%;"/>
-            <circle cx="50" cy="50" r="22" fill="none" stroke="var(--primary)" stroke-width="4" id="r-ring2"
-              style="stroke-dasharray:138; stroke-dashoffset:0; transform:rotate(-90deg); transform-origin:50% 50%;"/>
-            <circle cx="50" cy="50" r="16" fill="none" stroke="var(--primary)" stroke-width="2" id="r-ring3"
-              style="stroke-dasharray:100; stroke-dashoffset:0; transform:rotate(90deg); transform-origin:50% 50%;"/>
-            <!-- Spinning accent rings (visibility toggled by JS) -->
-            <circle cx="50" cy="50" r="35" fill="none" stroke="var(--accent)" stroke-width="1.5" id="r-spin1"
-              style="stroke-dasharray:30 190; transform-origin:50% 50%; animation:reactor-spin 1s linear infinite; opacity:0;"/>
-            <circle cx="50" cy="50" r="30" fill="none" stroke="var(--primary)" stroke-width="1" id="r-spin2"
-              style="stroke-dasharray:20 170; transform-origin:50% 50%; animation:reactor-spin 1.5s linear infinite reverse; opacity:0;"/>
-            <!-- Crosshairs -->
-            <line x1="2"  y1="50" x2="14" y2="50" stroke="var(--primary)" stroke-width="1" id="r-cross"/>
-            <line x1="86" y1="50" x2="98" y2="50" stroke="var(--primary)" stroke-width="1" id="r-cross2"/>
-            <line x1="50" y1="2"  x2="50" y2="14" stroke="var(--primary)" stroke-width="1" id="r-cross3"/>
-            <line x1="50" y1="86" x2="50" y2="98" stroke="var(--primary)" stroke-width="1" id="r-cross4"/>
-            <!-- Core -->
-            <circle cx="50" cy="50" r="14" fill="var(--primary)" opacity="0.1" id="r-core-fill"/>
-            <circle cx="50" cy="50" r="14" fill="none" stroke="var(--primary)" stroke-width="2"/>
-            <circle cx="50" cy="50" r="8" fill="var(--primary)" id="r-core"
-              style="filter:drop-shadow(0 0 8px var(--primary-glow)); animation:reactor-pulse 1.2s ease-in-out infinite;"/>
-            <circle cx="50" cy="50" r="4" fill="white" id="r-center"
-              style="filter:drop-shadow(0 0 12px var(--primary-glow));"/>
-          </svg>
-        </div>
-      </div>
-
-    </aside>
-
-    <!-- ── Center Display (transparent — orb canvas shows through) ── -->
+    <!-- Center Display (transparent — orb shows through) -->
     <main class="hud-center">
-      <div id="greeting-text" class="greeting-text">
-        GOOD EVENING, SIR · <span class="greeting-hl">HOW MAY I ASSIST</span>
-      </div>
       <div id="orb-state-label" class="orb-state-label"></div>
     </main>
 
-    <!-- ── Right Panel ─────────────────────────────────────────── -->
-    <aside class="hud-right">
-
-      <!-- System Telemetry -->
-      <div class="hud-panel">
-        <div class="hud-panel-hdr">
-          <span class="panel-dot-pulse"></span>
-          <span class="panel-label">SYSTEM TELEMETRY</span>
-        </div>
-        <div class="gauges-row">
-          <!-- CPU -->
-          <div class="gauge">
-            <svg viewBox="0 0 100 100">
-              <circle cx="50" cy="50" r="46" fill="none" stroke="var(--border-1)" stroke-width="1"/>
-              <circle cx="50" cy="50" r="40" fill="none" stroke="var(--border-1)" stroke-width="1"/>
-              <circle cx="50" cy="50" r="36" fill="none" stroke="var(--primary)" stroke-width="6" id="gauge-cpu-arc"
-                style="stroke-dasharray:152 226; stroke-dashoffset:-76; transform:rotate(-90deg); transform-origin:50% 50%; filter:drop-shadow(0 0 6px var(--primary-glow));"/>
-              <circle cx="50" cy="50" r="2" fill="var(--primary)"/>
-            </svg>
-            <div class="gauge-center">
-              <div class="gauge-val" id="cpu-val">67</div>
-              <div class="gauge-unit">CPU %</div>
-            </div>
-          </div>
-          <!-- GPU -->
-          <div class="gauge">
-            <svg viewBox="0 0 100 100">
-              <circle cx="50" cy="50" r="46" fill="none" stroke="var(--border-1)" stroke-width="1"/>
-              <path d="M50 50 L 50 4 A46 46 0 0 1 96 50 Z" fill="var(--accent)" opacity="0.7"/>
-              <path d="M50 50 L 96 50 A46 46 0 0 1 50 96 Z" fill="var(--accent)" opacity="0.45"/>
-              <circle cx="50" cy="50" r="32" fill="var(--surface-1)"/>
-              <circle cx="50" cy="50" r="32" fill="none" stroke="var(--primary)" stroke-width="2"/>
-              <circle cx="50" cy="50" r="20" fill="none" stroke="var(--border-1)" stroke-width="1"/>
-              <circle cx="50" cy="50" r="3" fill="var(--accent)"/>
-            </svg>
-            <div class="gauge-center">
-              <div class="gauge-val accent-val" id="gpu-val">82</div>
-              <div class="gauge-unit accent-val">GPU %</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="hud-bars">
-          <div class="hud-bar-row">
-            <span class="hud-bar-label">MEMORY</span>
-            <div class="hud-bar"><div class="hud-bar-fill" id="bar-memory" style="width:73%"></div></div>
-            <span class="hud-bar-val" id="val-memory">73%</span>
-          </div>
-          <div class="hud-bar-row">
-            <span class="hud-bar-label">DISK</span>
-            <div class="hud-bar"><div class="hud-bar-fill warn" id="bar-disk" style="width:48%"></div></div>
-            <span class="hud-bar-val warn" id="val-disk">48 GB</span>
-          </div>
-          <div class="hud-bar-row">
-            <span class="hud-bar-label">SIGNAL</span>
-            <div class="hud-bar"><div class="hud-bar-fill" id="bar-signal" style="width:91%"></div></div>
-            <span class="hud-bar-val" id="val-signal">91%</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Power Distribution -->
-      <div class="hud-panel">
-        <div class="hud-panel-hdr">
-          <span class="panel-dot-pulse"></span>
-          <span class="panel-label">POWER DISTRIBUTION</span>
-        </div>
-        <div class="gauges-row">
-          <div class="gauge">
-            <svg viewBox="0 0 100 100">
-              <circle cx="50" cy="50" r="40" fill="none" stroke="var(--border-1)" stroke-width="1"/>
-              <circle cx="50" cy="50" r="30" fill="none" stroke="var(--primary)" stroke-width="4"
-                style="stroke-dasharray:125 188; stroke-dashoffset:-50; transform:rotate(-90deg); transform-origin:50% 50%; filter:drop-shadow(0 0 4px var(--primary-glow));"/>
-            </svg>
-            <div class="gauge-center">
-              <div class="gauge-val">78</div>
-              <div class="gauge-unit">CORE</div>
-            </div>
-          </div>
-          <div class="gauge">
-            <svg viewBox="0 0 100 100">
-              <circle cx="50" cy="50" r="40" fill="none" stroke="var(--border-1)" stroke-width="1"/>
-              <circle cx="50" cy="50" r="30" fill="none" stroke="var(--accent)" stroke-width="4"
-                style="stroke-dasharray:100 188; stroke-dashoffset:-70; transform:rotate(-90deg); transform-origin:50% 50%; filter:drop-shadow(0 0 4px var(--accent-glow));"/>
-            </svg>
-            <div class="gauge-center">
-              <div class="gauge-val accent-val">54</div>
-              <div class="gauge-unit accent-val">AUX</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
+    <!-- Right Icon Strip — controls + drawers -->
+    <aside class="hud-icon-strip hud-icon-strip-right">
+      <button id="btn-mute" class="strip-btn strip-btn-action" title="Mute / Unmute">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+          <line x1="12" y1="19" x2="12" y2="23"/>
+        </svg>
+        <span class="strip-label">MIC</span>
+      </button>
+      <button id="btn-settings-open" class="strip-btn strip-btn-action" title="Settings">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+        <span class="strip-label">SYS</span>
+      </button>
+      <div class="strip-divider"></div>
+      <button class="strip-btn" id="btn-strip-launch" title="Quick Launch">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+          <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+        </svg>
+        <span class="strip-label">APPS</span>
+      </button>
+      <button class="strip-btn" id="btn-strip-telemetry" title="System Telemetry">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="2" y="3" width="4" height="18" rx="1"/><rect x="10" y="8" width="4" height="13" rx="1"/>
+          <rect x="18" y="5" width="4" height="16" rx="1"/>
+        </svg>
+        <span class="strip-label">TELM</span>
+      </button>
     </aside>
-
-    <!-- ── Footer ──────────────────────────────────────────────── -->
-    <footer class="hud-footer">
-      <div class="hud-diagnostics">
-        <div class="diag-item">
-          <div class="diag-label">UPTIME</div>
-          <div class="diag-value" id="diag-uptime">0D 0H 0M</div>
-        </div>
-        <div class="diag-item">
-          <div class="diag-label">CORE TEMP</div>
-          <div class="diag-value">54°C</div>
-        </div>
-        <div class="diag-item">
-          <div class="diag-label">NETWORK</div>
-          <div class="diag-value" id="diag-network">OPTIMAL</div>
-        </div>
-        <div class="diag-item">
-          <div class="diag-label">PROTOCOL</div>
-          <div class="diag-value">v0.1.0</div>
-        </div>
-      </div>
-
-      <div class="voice-controls">
-        <!-- Existing mic button — keep SVG unchanged -->
-        <button id="btn-mute" class="voice-btn" title="Mute / Unmute">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-            <line x1="12" y1="19" x2="12" y2="23"/>
-          </svg>
-        </button>
-        <button id="btn-menu" class="voice-btn" title="Menu">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/>
-          </svg>
-        </button>
-      </div>
-    </footer>
 
   </div><!-- /hud-system -->
 
-  <!-- Menu dropdown — above HUD, anchored bottom-right -->
-  <div id="menu-dropdown" style="display:none">
-    <button id="btn-settings">Settings</button>
-    <button id="btn-restart">Restart Server</button>
-    <button id="btn-fix-self">Fix Yourself</button>
+  <!-- ── Floating Drawers ──────────────────────────────────────── -->
+
+  <!-- Agent Command sidebar — always visible on left, collapsible via AGENTS button -->
+  <div class="agents-sidebar" id="agents-sidebar">
+    <!-- Header -->
+    <div class="agents-sidebar-hdr">
+      <span class="panel-dot-pulse"></span>
+      <span class="panel-label">AGENT COMMAND</span>
+    </div>
+
+    <!-- Agent cards -->
+    <div class="agent-list">
+
+      <!-- ULTRON -->
+      <div class="agent-card" id="card-ultron">
+        <svg class="mini-reactor" viewBox="0 0 70 70">
+          <circle cx="35" cy="35" r="32" fill="none" stroke="var(--border-1)" stroke-width="1"/>
+          <circle cx="35" cy="35" r="26" fill="none" stroke="var(--primary)" stroke-width="2.5"
+            id="mr-ultron-usage"
+            style="stroke-dasharray:163;stroke-dashoffset:163;transform:rotate(-90deg);transform-origin:35px 35px;filter:drop-shadow(0 0 4px var(--primary-glow));transition:stroke-dashoffset 0.8s ease;"/>
+          <circle cx="35" cy="35" r="30" fill="none" stroke="var(--accent)" stroke-width="1"
+            id="mr-ultron-spin"
+            style="stroke-dasharray:18 110;transform-origin:35px 35px;animation:reactor-spin 1.2s linear infinite;opacity:0;"/>
+          <line x1="3" y1="35" x2="11" y2="35" stroke="var(--primary)" stroke-width="0.8" opacity="0.3"/>
+          <line x1="59" y1="35" x2="67" y2="35" stroke="var(--primary)" stroke-width="0.8" opacity="0.3"/>
+          <line x1="35" y1="3" x2="35" y2="11" stroke="var(--primary)" stroke-width="0.8" opacity="0.3"/>
+          <line x1="35" y1="59" x2="35" y2="67" stroke="var(--primary)" stroke-width="0.8" opacity="0.3"/>
+          <circle cx="35" cy="35" r="16" fill="none" stroke="var(--border-2)" stroke-width="1"/>
+          <circle cx="35" cy="35" r="11" fill="var(--primary)" id="mr-ultron-cf" opacity="0.06"/>
+          <circle cx="35" cy="35" r="11" fill="none" stroke="var(--primary)" stroke-width="1.5" id="mr-ultron-cr" opacity="0.3"/>
+          <circle cx="35" cy="35" r="6" fill="var(--primary)" id="mr-ultron-glow" opacity="0.2"
+            style="filter:drop-shadow(0 0 5px var(--primary-glow));"/>
+          <circle cx="35" cy="35" r="3" fill="white" id="mr-ultron-center" opacity="0.15"
+            style="filter:drop-shadow(0 0 3px var(--primary-glow));"/>
+        </svg>
+        <div class="agent-info">
+          <div class="agent-name">ULTRON</div>
+          <div class="agent-status-txt offline" id="as-ultron">○ OFFLINE</div>
+          <div class="agent-usage-bar"><div class="agent-usage-fill" id="ab-ultron" style="width:0%"></div></div>
+          <div class="agent-pct" id="ap-ultron">0%</div>
+        </div>
+      </div>
+
+      <!-- ECHO -->
+      <div class="agent-card" id="card-echo">
+        <svg class="mini-reactor" viewBox="0 0 70 70">
+          <circle cx="35" cy="35" r="32" fill="none" stroke="var(--border-1)" stroke-width="1"/>
+          <circle cx="35" cy="35" r="26" fill="none" stroke="var(--primary)" stroke-width="2.5"
+            id="mr-echo-usage"
+            style="stroke-dasharray:163;stroke-dashoffset:163;transform:rotate(-90deg);transform-origin:35px 35px;filter:drop-shadow(0 0 4px var(--primary-glow));transition:stroke-dashoffset 0.8s ease;"/>
+          <circle cx="35" cy="35" r="30" fill="none" stroke="var(--accent)" stroke-width="1"
+            id="mr-echo-spin"
+            style="stroke-dasharray:18 110;transform-origin:35px 35px;animation:reactor-spin 1.4s linear infinite;opacity:0;"/>
+          <line x1="3" y1="35" x2="11" y2="35" stroke="var(--primary)" stroke-width="0.8" opacity="0.3"/>
+          <line x1="59" y1="35" x2="67" y2="35" stroke="var(--primary)" stroke-width="0.8" opacity="0.3"/>
+          <line x1="35" y1="3" x2="35" y2="11" stroke="var(--primary)" stroke-width="0.8" opacity="0.3"/>
+          <line x1="35" y1="59" x2="35" y2="67" stroke="var(--primary)" stroke-width="0.8" opacity="0.3"/>
+          <circle cx="35" cy="35" r="16" fill="none" stroke="var(--border-2)" stroke-width="1"/>
+          <circle cx="35" cy="35" r="11" fill="var(--primary)" id="mr-echo-cf" opacity="0.06"/>
+          <circle cx="35" cy="35" r="11" fill="none" stroke="var(--primary)" stroke-width="1.5" id="mr-echo-cr" opacity="0.3"/>
+          <circle cx="35" cy="35" r="6" fill="var(--primary)" id="mr-echo-glow" opacity="0.2"
+            style="filter:drop-shadow(0 0 5px var(--primary-glow));"/>
+          <circle cx="35" cy="35" r="3" fill="white" id="mr-echo-center" opacity="0.15"
+            style="filter:drop-shadow(0 0 3px var(--primary-glow));"/>
+        </svg>
+        <div class="agent-info">
+          <div class="agent-name">ECHO</div>
+          <div class="agent-status-txt offline" id="as-echo">○ OFFLINE</div>
+          <div class="agent-usage-bar"><div class="agent-usage-fill" id="ab-echo" style="width:0%"></div></div>
+          <div class="agent-pct" id="ap-echo">0%</div>
+        </div>
+      </div>
+
+      <!-- FRIDAY -->
+      <div class="agent-card" id="card-friday">
+        <svg class="mini-reactor" viewBox="0 0 70 70">
+          <circle cx="35" cy="35" r="32" fill="none" stroke="var(--border-1)" stroke-width="1"/>
+          <circle cx="35" cy="35" r="26" fill="none" stroke="var(--primary)" stroke-width="2.5"
+            id="mr-friday-usage"
+            style="stroke-dasharray:163;stroke-dashoffset:163;transform:rotate(-90deg);transform-origin:35px 35px;filter:drop-shadow(0 0 4px var(--primary-glow));transition:stroke-dashoffset 0.8s ease;"/>
+          <circle cx="35" cy="35" r="30" fill="none" stroke="var(--accent)" stroke-width="1"
+            id="mr-friday-spin"
+            style="stroke-dasharray:18 110;transform-origin:35px 35px;animation:reactor-spin 1s linear infinite;opacity:0;"/>
+          <line x1="3" y1="35" x2="11" y2="35" stroke="var(--primary)" stroke-width="0.8" opacity="0.3"/>
+          <line x1="59" y1="35" x2="67" y2="35" stroke="var(--primary)" stroke-width="0.8" opacity="0.3"/>
+          <line x1="35" y1="3" x2="35" y2="11" stroke="var(--primary)" stroke-width="0.8" opacity="0.3"/>
+          <line x1="35" y1="59" x2="35" y2="67" stroke="var(--primary)" stroke-width="0.8" opacity="0.3"/>
+          <circle cx="35" cy="35" r="16" fill="none" stroke="var(--border-2)" stroke-width="1"/>
+          <circle cx="35" cy="35" r="11" fill="var(--primary)" id="mr-friday-cf" opacity="0.06"/>
+          <circle cx="35" cy="35" r="11" fill="none" stroke="var(--primary)" stroke-width="1.5" id="mr-friday-cr" opacity="0.3"/>
+          <circle cx="35" cy="35" r="6" fill="var(--primary)" id="mr-friday-glow" opacity="0.2"
+            style="filter:drop-shadow(0 0 5px var(--primary-glow));"/>
+          <circle cx="35" cy="35" r="3" fill="white" id="mr-friday-center" opacity="0.15"
+            style="filter:drop-shadow(0 0 3px var(--primary-glow));"/>
+        </svg>
+        <div class="agent-info">
+          <div class="agent-name">FRIDAY</div>
+          <div class="agent-status-txt offline" id="as-friday">○ OFFLINE</div>
+          <div class="agent-usage-bar"><div class="agent-usage-fill" id="ab-friday" style="width:0%"></div></div>
+          <div class="agent-pct" id="ap-friday">0%</div>
+        </div>
+      </div>
+
+      <!-- VISION -->
+      <div class="agent-card" id="card-vision">
+        <svg class="mini-reactor" viewBox="0 0 70 70">
+          <circle cx="35" cy="35" r="32" fill="none" stroke="var(--border-1)" stroke-width="1"/>
+          <circle cx="35" cy="35" r="26" fill="none" stroke="var(--primary)" stroke-width="2.5"
+            id="mr-vision-usage"
+            style="stroke-dasharray:163;stroke-dashoffset:163;transform:rotate(-90deg);transform-origin:35px 35px;filter:drop-shadow(0 0 4px var(--primary-glow));transition:stroke-dashoffset 0.8s ease;"/>
+          <circle cx="35" cy="35" r="30" fill="none" stroke="var(--accent)" stroke-width="1"
+            id="mr-vision-spin"
+            style="stroke-dasharray:18 110;transform-origin:35px 35px;animation:reactor-spin 1.6s linear infinite;opacity:0;"/>
+          <line x1="3" y1="35" x2="11" y2="35" stroke="var(--primary)" stroke-width="0.8" opacity="0.3"/>
+          <line x1="59" y1="35" x2="67" y2="35" stroke="var(--primary)" stroke-width="0.8" opacity="0.3"/>
+          <line x1="35" y1="3" x2="35" y2="11" stroke="var(--primary)" stroke-width="0.8" opacity="0.3"/>
+          <line x1="35" y1="59" x2="35" y2="67" stroke="var(--primary)" stroke-width="0.8" opacity="0.3"/>
+          <circle cx="35" cy="35" r="16" fill="none" stroke="var(--border-2)" stroke-width="1"/>
+          <circle cx="35" cy="35" r="11" fill="var(--primary)" id="mr-vision-cf" opacity="0.06"/>
+          <circle cx="35" cy="35" r="11" fill="none" stroke="var(--primary)" stroke-width="1.5" id="mr-vision-cr" opacity="0.3"/>
+          <circle cx="35" cy="35" r="6" fill="var(--primary)" id="mr-vision-glow" opacity="0.2"
+            style="filter:drop-shadow(0 0 5px var(--primary-glow));"/>
+          <circle cx="35" cy="35" r="3" fill="white" id="mr-vision-center" opacity="0.15"
+            style="filter:drop-shadow(0 0 3px var(--primary-glow));"/>
+        </svg>
+        <div class="agent-info">
+          <div class="agent-name">VISION</div>
+          <div class="agent-status-txt offline" id="as-vision">○ OFFLINE</div>
+          <div class="agent-usage-bar"><div class="agent-usage-fill" id="ab-vision" style="width:0%"></div></div>
+          <div class="agent-pct" id="ap-vision">0%</div>
+        </div>
+      </div>
+
+    </div><!-- /agent-list -->
   </div>
 
-  <!-- Error toast — absolute over HUD -->
-  <div id="error-text"></div>
+  <!-- Quick Launch drawer — slides from RIGHT -->
+  <div class="hud-drawer hud-drawer-right" id="drawer-launch">
+    <div class="hud-panel">
+      <div class="hud-panel-hdr">
+        <span class="panel-dot-pulse"></span>
+        <span class="panel-label">QUICK LAUNCH</span>
+      </div>
+      <div class="launcher-grid">
+        <button class="hex-btn" data-cmd="Open Chrome"><span>CHR</span></button>
+        <button class="hex-btn" data-cmd="Open Calculator"><span>CALC</span></button>
+        <button class="hex-btn" data-cmd="Open File Explorer"><span>EXP</span></button>
+        <button class="hex-btn" data-cmd="Open Terminal"><span>TERM</span></button>
+        <button class="hex-btn" data-cmd="Open VS Code"><span>CODE</span></button>
+        <button class="hex-btn" data-cmd="Open Notepad"><span>NOTE</span></button>
+      </div>
+    </div>
+  </div>
 
-  <!-- Hidden compat divs — main.ts still queries these -->
+  <!-- System Telemetry drawer — slides from RIGHT -->
+  <div class="hud-drawer hud-drawer-right" id="drawer-telemetry">
+    <div class="hud-panel">
+      <div class="hud-panel-hdr">
+        <span class="panel-dot-pulse"></span>
+        <span class="panel-label">SYSTEM TELEMETRY</span>
+      </div>
+      <div class="gauges-row">
+        <div class="gauge">
+          <svg viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="46" fill="none" stroke="var(--border-1)" stroke-width="1"/>
+            <circle cx="50" cy="50" r="40" fill="none" stroke="var(--border-1)" stroke-width="1"/>
+            <circle cx="50" cy="50" r="36" fill="none" stroke="var(--primary)" stroke-width="6" id="gauge-cpu-arc"
+              style="stroke-dasharray:152 226;stroke-dashoffset:-76;transform:rotate(-90deg);transform-origin:50% 50%;filter:drop-shadow(0 0 6px var(--primary-glow));"/>
+            <circle cx="50" cy="50" r="2" fill="var(--primary)"/>
+          </svg>
+          <div class="gauge-center">
+            <div class="gauge-val" id="cpu-val">--</div>
+            <div class="gauge-unit">CPU %</div>
+          </div>
+        </div>
+        <div class="gauge">
+          <svg viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="46" fill="none" stroke="var(--border-1)" stroke-width="1"/>
+            <circle cx="50" cy="50" r="40" fill="none" stroke="var(--border-1)" stroke-width="1"/>
+            <circle cx="50" cy="50" r="36" fill="none" stroke="var(--accent)" stroke-width="6" id="gauge-ram-arc"
+              style="stroke-dasharray:152 226;stroke-dashoffset:-76;transform:rotate(-90deg);transform-origin:50% 50%;filter:drop-shadow(0 0 6px var(--accent-glow));"/>
+            <circle cx="50" cy="50" r="2" fill="var(--accent)"/>
+          </svg>
+          <div class="gauge-center">
+            <div class="gauge-val accent-val" id="ram-val">--</div>
+            <div class="gauge-unit accent-val">RAM %</div>
+          </div>
+        </div>
+      </div>
+      <div class="hud-bars">
+        <div class="hud-bar-row">
+          <span class="hud-bar-label">CPU</span>
+          <div class="hud-bar"><div class="hud-bar-fill" id="bar-cpu" style="width:0%"></div></div>
+          <span class="hud-bar-val" id="val-cpu-bar">--%</span>
+        </div>
+        <div class="hud-bar-row">
+          <span class="hud-bar-label">MEMORY</span>
+          <div class="hud-bar"><div class="hud-bar-fill" id="bar-memory" style="width:0%"></div></div>
+          <span class="hud-bar-val" id="val-memory">--</span>
+        </div>
+        <div class="hud-bar-row">
+          <span class="hud-bar-label">DISK</span>
+          <div class="hud-bar"><div class="hud-bar-fill warn" id="bar-disk" style="width:0%"></div></div>
+          <span class="hud-bar-val warn" id="val-disk">--</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="error-text"></div>
   <div id="status-text" style="display:none"></div>
   <div id="jarvis-label" style="display:none"></div>
 

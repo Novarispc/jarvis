@@ -1,12 +1,15 @@
 """
 VISION — Knowledge Agent for JARVIS
 
-Primary source  : Wikipedia REST API (rate-limited, cached)
+Primary source  : Offline Kiwix Server (Local Wikipedia @ http://127.0.0.1:8080)
 Secondary source: Local SQLite knowledge DB (vision_knowledge.db)
 Fallback        : Internal response with "uncertain" confidence
 
 VISION is standalone — it does not depend on any other JARVIS module.
 JARVIS calls vision_agent.ask(question) and receives a VisionResponse.
+
+OFFLINE MODE: VISION queries local Wikipedia without internet connection.
+Languages: English, Tamil, Malayalam
 """
 
 import asyncio
@@ -15,26 +18,45 @@ import re
 import sqlite3
 import time
 import unicodedata
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, List
 
 import httpx
 
 log = logging.getLogger("jarvis.vision")
 
 # ---------------------------------------------------------------------------
-# Wikipedia endpoints
+# Kiwix Offline Server Configuration
 # ---------------------------------------------------------------------------
 
-WIKI_API  = "https://en.wikipedia.org/w/api.php"
-WIKI_REST = "https://en.wikipedia.org/api/rest_v1/page/summary/{}"
+KIWIX_SERVER_URL = "http://127.0.0.1:8080"
+KIWIX_SEARCH_API = f"{KIWIX_SERVER_URL}/search?query="
+KIWIX_CONTENT_API = f"{KIWIX_SERVER_URL}/content/"
+
+# Language mapping for offline Wikipedia
+LANGUAGE_CONFIG = {
+    "en": {"name": "English Wikipedia", "lang_code": "en"},
+    "en-US": {"name": "English Wikipedia", "lang_code": "en"},
+    "ta": {"name": "Tamil Wikipedia", "lang_code": "ta"},
+    "ta-IN": {"name": "Tamil Wikipedia", "lang_code": "ta"},
+    "ml": {"name": "Malayalam Wikipedia", "lang_code": "ml"},
+    "ml-IN": {"name": "Malayalam Wikipedia", "lang_code": "ml"},
+}
+
+# Fallback to live Wikipedia if needed (disabled by default for offline-first)
+USE_LIVE_WIKIPEDIA_FALLBACK = False
+
+# Live Wikipedia endpoints (used only if Kiwix unavailable)
+WIKI_API_LIVE  = "https://en.wikipedia.org/w/api.php"
+WIKI_REST_LIVE = "https://en.wikipedia.org/api/rest_v1/page/summary/{}"
 
 # Cache TTLs (seconds)
 CACHE_TTL_STABLE = 30 * 24 * 3600   # 30 days — encyclopedic facts
 CACHE_TTL_EVENTS = 3600              # 1 hour  — current-events articles
 
-RATE_LIMIT_DELAY = 1.1               # minimum seconds between Wikipedia requests
+RATE_LIMIT_DELAY = 0.5               # minimum seconds between local server requests (no rate limiting needed for offline)
 
 
 # ---------------------------------------------------------------------------
@@ -45,8 +67,9 @@ RATE_LIMIT_DELAY = 1.1               # minimum seconds between Wikipedia request
 class VisionResponse:
     confidence: str           # "high" | "medium" | "low" | "uncertain"
     answer: str
-    source: str               # "wikipedia" | "knowledge_db" | "internal"
+    source: str               # "kiwix" | "wikipedia_live" | "knowledge_db" | "internal"
     wikipedia_url: Optional[str] = None
+    source_language: Optional[str] = None  # "English" | "Tamil" | "Malayalam"
     follow_up: Optional[str]  = None
 
 
@@ -225,6 +248,104 @@ class VisionAgent:
             return conn.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
 
     # ------------------------------------------------------------------
+    # Kiwix Offline Server Helpers
+    # ------------------------------------------------------------------
+
+    async def _is_kiwix_available(self, client: httpx.AsyncClient) -> bool:
+        """Check if Kiwix server is running and responsive."""
+        try:
+            resp = await client.get(f"{KIWIX_SERVER_URL}/health", timeout=httpx.Timeout(2.0))
+            return resp.status_code == 200
+        except Exception:
+            return False
+
+    async def _try_start_kiwix(self) -> bool:
+        """Attempt to start Kiwix server if it's not running."""
+        try:
+            # Try to start Kiwix server (Windows/generic approach)
+            # You may need to adjust the command based on your Kiwix setup
+            subprocess.Popen(
+                ["kiwix-serve", "--port", "8080", "C:\\Users\\novar\\JARVIS_WIKI\\Kiwix\\*"],
+                stderr=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+            )
+            log.info("Started Kiwix server on port 8080")
+            await asyncio.sleep(2)  # Give server time to start
+            return True
+        except Exception as e:
+            log.warning(f"Failed to start Kiwix server: {e}")
+            return False
+
+    async def _kiwix_search(self, client: httpx.AsyncClient, query: str, lang_code: str = "en") -> Optional[str]:
+        """Search offline Kiwix Wikipedia and return first article title."""
+        try:
+            search_url = f"{KIWIX_SEARCH_API}{query.replace(' ', '+')}"
+            resp = await self._rate_request(client, search_url, timeout=httpx.Timeout(5.0))
+
+            if resp.status_code != 200:
+                log.warning(f"Kiwix search failed: {resp.status_code}")
+                return None
+
+            # Parse Kiwix search response (typically HTML or JSON)
+            content = resp.text
+
+            # Look for article links in the response
+            # Kiwix typically returns HTML with links like <a href="/content/en/Article_Title">
+            import re as regex
+            matches = regex.findall(r'/content/[^/]+/([^"]+)', content)
+
+            if matches:
+                return matches[0].replace("_", " ")  # Return first matching article
+
+            return None
+        except Exception as e:
+            log.warning(f"Kiwix search error: {e}")
+            return None
+
+    async def _kiwix_get_summary(self, client: httpx.AsyncClient, article_title: str, lang_code: str = "en") -> Optional[Dict]:
+        """Retrieve article summary from offline Kiwix."""
+        try:
+            # Construct URL for Kiwix content
+            encoded_title = article_title.replace(" ", "_")
+            content_url = f"{KIWIX_CONTENT_API}{lang_code}/{encoded_title}"
+
+            resp = await self._rate_request(client, content_url, timeout=httpx.Timeout(5.0))
+
+            if resp.status_code != 200:
+                return None
+
+            # Extract text from HTML response (simplistic approach)
+            html = resp.text
+
+            # Remove script and style tags
+            html = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL)
+            html = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.DOTALL)
+
+            # Extract text from paragraphs
+            paragraphs = re.findall(r'<p[^>]*>(.*?)</p>', html, flags=re.DOTALL)
+            if not paragraphs:
+                paragraphs = re.findall(r'<div[^>]*>(.*?)</div>', html, flags=re.DOTALL)
+
+            if paragraphs:
+                # Clean HTML tags
+                summary_html = paragraphs[0]
+                summary_text = re.sub(r'<[^>]+>', '', summary_html)
+                summary_text = summary_text.strip()[:500]  # First 500 chars
+
+                return {
+                    "title": article_title,
+                    "summary": summary_text,
+                    "type": "kiwix",
+                    "url": content_url,
+                    "lang": lang_code,
+                }
+
+            return None
+        except Exception as e:
+            log.warning(f"Kiwix content retrieval error: {e}")
+            return None
+
+    # ------------------------------------------------------------------
     # Rate-limited HTTP
     # ------------------------------------------------------------------
 
@@ -239,13 +360,14 @@ class VisionAgent:
             return resp
 
     # ------------------------------------------------------------------
-    # Wikipedia helpers
+    # Wikipedia helpers (Live fallback - for when Kiwix is unavailable)
     # ------------------------------------------------------------------
 
-    async def _wiki_search(self, client: httpx.AsyncClient, query: str) -> list[str]:
+    async def _wiki_search_live(self, client: httpx.AsyncClient, query: str) -> list[str]:
+        """Search live Wikipedia (fallback only)."""
         try:
             resp = await self._rate_request(
-                client, WIKI_API,
+                client, WIKI_API_LIVE,
                 params={
                     "action": "query", "list": "search",
                     "srsearch": query, "format": "json",
@@ -256,19 +378,19 @@ class VisionAgent:
             data = resp.json()
             return [r["title"] for r in data.get("query", {}).get("search", [])]
         except Exception as exc:
-            log.warning(f"VISION search failed: {exc}")
+            log.warning(f"VISION live Wikipedia search failed: {exc}")
             return []
 
-    async def _wiki_summary(self, client: httpx.AsyncClient,
+    async def _wiki_summary_live(self, client: httpx.AsyncClient,
                             title: str) -> Optional[dict]:
-        """Fetch REST summary for a title; checks cache first."""
+        """Fetch REST summary for a title from live Wikipedia; checks cache first."""
         cached = self._cache_lookup(title)
         if cached:
             log.debug(f"VISION cache hit: '{title}'")
             return {**cached, "type": "cached"}
 
         try:
-            url  = WIKI_REST.format(title.replace(" ", "_"))
+            url  = WIKI_REST_LIVE.format(title.replace(" ", "_"))
             resp = await self._rate_request(client, url, timeout=8.0)
             if resp.status_code == 404:
                 return None
@@ -435,76 +557,151 @@ class VisionAgent:
                     source="internal",
                 )
 
-            # 2. Wikipedia lookup
+            # 2. Offline Kiwix lookup (primary) or Live Wikipedia fallback
             search_query = self._extract_search_query(question)
+            lang_code = self.lang.split("-")[0] if "-" in self.lang else self.lang  # Extract language code (e.g., "en" from "en-US")
+
             async with httpx.AsyncClient(
                 headers={"User-Agent": "JARVIS-VISION/1.0 (jarvis-assistant)"},
                 timeout=httpx.Timeout(10.0),
             ) as client:
-                titles = await self._wiki_search(client, search_query)
+                # Try Kiwix first (offline Wikipedia)
+                kiwix_available = await self._is_kiwix_available(client)
 
-                # Retry with raw question if extracted query yields nothing
-                if not titles and search_query != question:
-                    titles = await self._wiki_search(client, question)
+                if not kiwix_available:
+                    log.warning("Kiwix offline server not available, attempting to start...")
+                    started = await self._try_start_kiwix()
+                    if started:
+                        kiwix_available = await self._is_kiwix_available(client)
 
-                if not titles:
+                if kiwix_available:
+                    # Query offline Kiwix
+                    log.info(f"Querying offline Wikipedia ({self.lang})")
+                    article_title = await self._kiwix_search(client, search_query, lang_code)
+
+                    if not article_title and search_query != question:
+                        article_title = await self._kiwix_search(client, question, lang_code)
+
+                    if article_title:
+                        wiki = await self._kiwix_get_summary(client, article_title, lang_code)
+
+                        if wiki and wiki.get("summary"):
+                            summary = wiki["summary"]
+                            source_url = wiki.get("url", "")
+                            article_ttl = wiki.get("title", article_title)
+                            source_language = LANGUAGE_CONFIG.get(self.lang, {}).get("name", "Unknown")
+
+                            q_words = set(norm.split())
+                            title_words = set(self._normalize(article_ttl).split())
+                            overlap = q_words & title_words
+                            confidence = "high" if len(overlap) >= 2 else "medium"
+
+                            follow_up = self._follow_up(question, article_ttl)
+
+                            answer = summary
+                            # Enrich with system context if this is a system question
+                            if is_system_question and include_system_context:
+                                system_context = await self._get_system_context()
+                                if system_context:
+                                    answer = f"{answer}\n\n[CURRENT SYSTEM STATE]\n{system_context}"
+
+                            response = VisionResponse(
+                                confidence=confidence,
+                                answer=answer,
+                                source="kiwix",
+                                source_language=source_language,
+                                wikipedia_url=source_url,
+                                follow_up=follow_up,
+                            )
+
+                            # Persist to knowledge DB
+                            await loop.run_in_executor(
+                                None, self._store_knowledge,
+                                question, summary, "kiwix", source_url, confidence, follow_up,
+                            )
+
+                            log.info(f"VISION → {confidence} confidence from offline Wikipedia ({source_language})")
+                            return response
+
+                # Kiwix failed or not available - try live Wikipedia fallback (if enabled)
+                if not kiwix_available and not USE_LIVE_WIKIPEDIA_FALLBACK:
                     return VisionResponse(
                         confidence="uncertain",
-                        answer="Wikipedia appears to be unavailable, sir. I'm unable to verify that right now.",
+                        answer="Offline Wikipedia server is not running. Please start Kiwix and try again.",
                         source="internal",
                     )
 
-                # Try each candidate until we get a usable summary
-                wiki = None
-                for title in titles:
-                    result = await self._wiki_summary(client, title)
-                    if result and result.get("type") in ("standard", "cached") \
-                            and result.get("summary"):
-                        wiki = result
-                        break
+                if USE_LIVE_WIKIPEDIA_FALLBACK:
+                    log.info("Falling back to live Wikipedia")
+                    titles = await self._wiki_search_live(client, search_query)
 
-                if not wiki:
-                    return VisionResponse(
-                        confidence="uncertain",
-                        answer="I found related articles but couldn't extract a clear answer, sir. Could you clarify the topic?",
-                        source="internal",
+                    # Retry with raw question if extracted query yields nothing
+                    if not titles and search_query != question:
+                        titles = await self._wiki_search_live(client, question)
+
+                    if not titles:
+                        return VisionResponse(
+                            confidence="uncertain",
+                            answer="Wikipedia appears to be unavailable, sir. I'm unable to verify that right now.",
+                            source="internal",
+                        )
+
+                    # Try each candidate until we get a usable summary
+                    wiki = None
+                    for title in titles:
+                        result = await self._wiki_summary_live(client, title)
+                        if result and result.get("type") in ("standard", "cached") \
+                                and result.get("summary"):
+                            wiki = result
+                            break
+
+                    if not wiki:
+                        return VisionResponse(
+                            confidence="uncertain",
+                            answer="I found related articles but couldn't extract a clear answer, sir. Could you clarify the topic?",
+                            source="internal",
+                        )
+
+                    summary = wiki["summary"]
+                    source_url = wiki.get("url", "")
+                    article_ttl = wiki.get("title", titles[0])
+
+                    q_words = set(norm.split())
+                    title_words = set(self._normalize(titles[0]).split())
+                    overlap = q_words & title_words
+                    confidence = "high" if len(overlap) >= 2 else "medium"
+
+                    follow_up = self._follow_up(question, article_ttl)
+
+                    answer = summary
+                    # Enrich with system context if this is a system question
+                    if is_system_question and include_system_context:
+                        system_context = await self._get_system_context()
+                        if system_context:
+                            answer = f"{answer}\n\n[CURRENT SYSTEM STATE]\n{system_context}"
+
+                    response = VisionResponse(
+                        confidence=confidence,
+                        answer=answer,
+                        source="wikipedia_live",
+                        wikipedia_url=source_url,
+                        follow_up=follow_up,
                     )
 
-            summary     = wiki["summary"]
-            source_url  = wiki.get("url", "")
-            article_ttl = wiki.get("title", titles[0])
+                    # Persist to knowledge DB
+                    await loop.run_in_executor(
+                        None, self._store_knowledge,
+                        question, summary, "wikipedia_live", source_url, confidence, follow_up,
+                    )
 
-            # Confidence: high if first search result matches the question closely
-            q_words     = set(norm.split())
-            title_words = set(self._normalize(titles[0]).split())
-            overlap     = q_words & title_words
-            confidence  = "high" if len(overlap) >= 2 else "medium"
+                    log.info(f"VISION → {confidence} confidence from live Wikipedia")
+                    return response
 
-            follow_up = self._follow_up(question, article_ttl)
-
-            answer = summary
-            # Enrich with system context if this is a system question
-            if is_system_question and include_system_context:
-                system_context = await self._get_system_context()
-                if system_context:
-                    answer = f"{answer}\n\n[CURRENT SYSTEM STATE]\n{system_context}"
-
-            response = VisionResponse(
-                confidence=confidence,
-                answer=answer,
-                source="wikipedia",
-                wikipedia_url=source_url,
-                follow_up=follow_up,
+            return VisionResponse(
+                confidence="uncertain",
+                answer="I could not find information on that topic in my offline Wikipedia collection.",
+                source="internal",
             )
-
-            # Persist — fire and forget in executor so we don't block
-            await loop.run_in_executor(
-                None, self._store_knowledge,
-                question, summary, "wikipedia", source_url, confidence, follow_up,
-            )
-
-            log.info(f"VISION → {confidence} confidence from Wikipedia")
-            return response
 
         except Exception as exc:
             log.error(f"VISION error: {exc}", exc_info=True)

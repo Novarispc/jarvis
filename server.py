@@ -2422,9 +2422,17 @@ async def voice_handler(ws: WebSocket):
                                         response_text = "One moment, sir."
                                     _AGENT_STATES["vision"]["usage"] = 80
                                     try:
-                                        vision_resp = await vision_agent.ask(question)
+                                        # Set language on VISION agent based on current session language
+                                        current_lang = _session_lang or "en-US"
+                                        vision_agent.lang = current_lang
+                                        log.info(f"VISION querying in language: {current_lang}")
+
+                                        vision_resp = await vision_agent.ask(question, include_system_context=True)
                                         if vision_resp.confidence != "uncertain":
                                             response_text = vision_resp.answer
+                                            # Include source information in debug logs
+                                            if hasattr(vision_resp, 'source_language') and vision_resp.source_language:
+                                                log.info(f"VISION source: {vision_resp.source} ({vision_resp.source_language})")
                                         else:
                                             response_text = vision_resp.answer
                                     except Exception as _ve:

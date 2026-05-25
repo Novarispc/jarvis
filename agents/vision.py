@@ -47,8 +47,8 @@ LANGUAGE_CONFIG = {
     "ml-IN": {"name": "Malayalam Wikipedia","zim_lang": "mal"},
 }
 
-# Fallback to live Wikipedia if Kiwix is unavailable (disabled by default)
-USE_LIVE_WIKIPEDIA_FALLBACK = False
+# Fallback to live Wikipedia when Kiwix can't find an article
+USE_LIVE_WIKIPEDIA_FALLBACK = True
 
 # Live Wikipedia endpoints (used only if Kiwix unavailable)
 WIKI_API_LIVE  = "https://en.wikipedia.org/w/api.php"
@@ -318,13 +318,14 @@ class VisionAgent:
     def _question_to_titles(self, question: str, lang_code: str = "en") -> List[str]:
         """
         Generate Wikipedia article title candidates from a natural language question.
-        Returns a list of titles to try, in order of likelihood.
+        Returns titles ordered by likelihood — Wikipedia convention is Title_Case.
         """
-        # Strip question words to get topic
         q = question.strip().rstrip("?!.")
+        # Strip question words (same safe patterns as _extract_search_query)
         patterns = [
             r"^(who is|who was|who are|who were)\s+",
-            r"^(what is|what are|what was|what were)\s+(a |an |the )?",
+            r"^(what is|what are|what was|what were)\s+(?:a|an|the)\s+",
+            r"^(what is|what are|what was|what were)\s+",
             r"^(when (did|was|were|is|are))\s+",
             r"^(where (is|was|are|were|did))\s+",
             r"^(how (does|do|did|is|are|was|were))\s+",
@@ -335,33 +336,31 @@ class VisionAgent:
         for pat in patterns:
             q = re.sub(pat, "", q, flags=re.IGNORECASE).strip()
 
-        candidates = []
+        if not q:
+            q = question.strip().rstrip("?!.")
 
-        # As-is (preserves original query words)
-        if q:
-            candidates.append(q)
+        # Wikipedia title is almost always "Title_Case_With_Underscores"
+        # Prioritise that format first, then fall back to lowercase/raw
+        titled      = q.title()                  # "Artificial Intelligence"
+        cap_first   = q[0].upper() + q[1:]       # "Artificial intelligence"
+        lower       = q.lower()                  # "artificial intelligence"
 
-        # Title Case
-        titled = q.title()
-        if titled != q:
-            candidates.append(titled)
-
-        # Underscored (Wikipedia URL format)
-        underscored = q.replace(" ", "_")
-        candidates.append(underscored)
-
-        # Title-cased + underscored
-        candidates.append(titled.replace(" ", "_"))
-
-        # Capitalise first letter only
-        cap = q[0].upper() + q[1:] if q else q
-        candidates.append(cap)
+        candidates = [
+            titled,                              # "Artificial Intelligence"
+            cap_first,                           # "Artificial intelligence"
+            titled.replace(" ", "_"),            # "Artificial_Intelligence"
+            cap_first.replace(" ", "_"),         # "Artificial_intelligence"
+            q,                                   # as-is (may already be title-cased)
+            q.replace(" ", "_"),                 # as-is with underscores
+            lower,                               # "artificial intelligence"
+            lower.replace(" ", "_"),             # "artificial_intelligence"
+        ]
 
         # Deduplicate preserving order
         seen: set = set()
         result = []
         for c in candidates:
-            if c not in seen:
+            if c and c not in seen:
                 seen.add(c)
                 result.append(c)
         return result
@@ -520,10 +519,13 @@ class VisionAgent:
     def _extract_search_query(self, question: str) -> str:
         """Strip question words to get a clean Wikipedia search term."""
         q = question.strip().rstrip("?")
-        # Remove leading question patterns
+        # Remove leading question patterns.
+        # IMPORTANT: article words (a/an/the) must be followed by \s+ so we
+        # don't accidentally eat the first letter of the topic (e.g. "Artificial")
         patterns = [
             r"^(who is|who was|who are|who were)\s+",
-            r"^(what is|what are|what was|what were)\s+(a|an|the)?\s*",
+            r"^(what is|what are|what was|what were)\s+(?:a|an|the)\s+",  # requires space after article
+            r"^(what is|what are|what was|what were)\s+",                  # fallback without article
             r"^(when (did|was|were|is|are))\s+",
             r"^(where (is|was|are|were|did))\s+",
             r"^(how (does|do|did|is|are|was|were))\s+",

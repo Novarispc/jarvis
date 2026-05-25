@@ -2430,11 +2430,20 @@ async def voice_handler(ws: WebSocket):
                                         vision_resp = await vision_agent.ask(question, include_system_context=True)
                                         if vision_resp.confidence != "uncertain":
                                             response_text = vision_resp.answer
-                                            # Include source information in debug logs
-                                            if hasattr(vision_resp, 'source_language') and vision_resp.source_language:
-                                                log.info(f"VISION source: {vision_resp.source} ({vision_resp.source_language})")
+                                            src = getattr(vision_resp, 'source_language', None) or vision_resp.source
+                                            log.info(f"VISION source: {vision_resp.source} ({src})")
                                         else:
-                                            response_text = vision_resp.answer
+                                            # VISION couldn't find it — fall back to Groq LLM
+                                            log.info(f"VISION uncertain for {question!r} — falling back to Groq LLM")
+                                            _fallback_msgs = [
+                                                {"role": "system", "content": f"Answer this knowledge question concisely in 1-2 sentences, as JARVIS would: {question}"},
+                                            ]
+                                            try:
+                                                _fb_text = await _llm_call(_fallback_msgs)
+                                                response_text = _fb_text.strip() if _fb_text else vision_resp.answer
+                                            except Exception as _fe:
+                                                log.warning(f"Groq fallback also failed: {_fe}")
+                                                response_text = vision_resp.answer
                                     except Exception as _ve:
                                         log.error(f"VISION call failed: {_ve}")
                                         response_text = "I'm afraid VISION is unavailable at the moment, sir."

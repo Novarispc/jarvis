@@ -844,11 +844,15 @@ class VisionAgent:
     def get_status(self) -> dict:
         """Return agent status for /api/agents/status."""
         if self._active:
-            # Processing — show high activity (60-100%)
-            usage = min(100, 60 + min(40, self._total_queries * 5))
+            # Actively processing a query — show high activity
+            usage = min(100, 70 + min(30, self._total_queries * 3))
+        elif self._total_queries == 0:
+            # Never been called this session — show 0 (truly idle)
+            usage = 0
         else:
-            # Standby — show 40% so the reactor ring has a visible fill
-            usage = 40
+            # Has answered queries — show a modest idle level scaled to query count
+            # Caps at 30% in standby so it never looks like it's "always 40%"
+            usage = min(30, self._total_queries * 5)
         return {"online": True, "usage": usage}
 
     def get_knowledge_count(self) -> int:

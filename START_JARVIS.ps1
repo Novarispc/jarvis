@@ -111,4 +111,4 @@ Write-Host ""
 Write-Host "  To stop JARVIS, run STOP_JARVIS.ps1" -ForegroundColor Gray
 Write-Host "  ============================================" -ForegroundColor Cyan
 Write-Host ""
-Read-Host "  Press Enter to close this window"
+Start-Sleep -Seconds 2   # brief pause so user can read "JARVIS is ready"

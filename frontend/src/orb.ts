@@ -45,7 +45,7 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
   for (let i = 0; i < N; i++) {
     const theta = Math.random() * Math.PI * 2;
     const phi = Math.acos(2 * Math.random() - 1);
-    const r = Math.pow(Math.random(), 0.5) * 25;
+    const r = Math.pow(Math.random(), 0.5) * 30;
     pos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
     pos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
     pos[i * 3 + 2] = r * Math.cos(phi);
@@ -104,7 +104,7 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
 
   // ── State ──
   let state: OrbState = "idle";
-  let targetRadius = 25, currentRadius = 25;
+  let targetRadius = 30, currentRadius = 30;
   let targetSpeed = 0.3, currentSpeed = 0.3;
   let targetBright = 0.6, currentBright = 0.6;
   let targetSize = 0.4, currentSize = 0.4;
@@ -135,16 +135,16 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
 
     switch (state) {
       case "idle":
-        targetRadius = 28; targetSpeed = 0.2; targetBright = 0.5; targetSize = 0.35;
+        targetRadius = 34; targetSpeed = 0.2; targetBright = 0.5; targetSize = 0.35;
         targetLineAmount = 0.15; targetElectronRate = 0; break;
       case "listening":
-        targetRadius = 22; targetSpeed = 0.3; targetBright = 0.65; targetSize = 0.4;
+        targetRadius = 26; targetSpeed = 0.3; targetBright = 0.65; targetSize = 0.4;
         targetLineAmount = 0.4; targetElectronRate = 0; break;
       case "thinking":
-        targetRadius = 16; targetSpeed = 0.5; targetBright = 0.7; targetSize = 0.3;
+        targetRadius = 19; targetSpeed = 0.5; targetBright = 0.7; targetSize = 0.3;
         targetLineAmount = 1.0; targetElectronRate = 0.015; break;
       case "speaking":
-        targetRadius = 18; targetSpeed = 0.2; targetBright = 0.7; targetSize = 0.4;
+        targetRadius = 22; targetSpeed = 0.2; targetBright = 0.7; targetSize = 0.4;
         targetLineAmount = 0.8; targetElectronRate = 0; break;
     }
 

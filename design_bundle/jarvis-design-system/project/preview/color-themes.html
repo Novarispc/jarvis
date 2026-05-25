@@ -1,0 +1,75 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Theme palettes</title>
+<link rel="stylesheet" href="_base.css">
+<style>
+  .theme-row { display: grid; grid-template-columns: 90px 1fr 1fr 1fr 1fr; gap: 8px; align-items: center; }
+  .theme-name {
+    font-family: var(--font-display);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: var(--track-wide);
+    text-transform: uppercase;
+    color: var(--fg-2);
+  }
+  .mini-sw {
+    height: 40px;
+    border: 1px solid var(--border-1);
+    position: relative;
+    font-family: var(--font-mono);
+    font-size: 8px;
+    color: var(--fg-on-primary);
+    padding: 4px 6px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: flex-end;
+    letter-spacing: 0.1em;
+  }
+  .mini-sw.dark { color: var(--fg-1); }
+</style></head>
+<body><div class="card-frame col" style="gap:10px">
+
+<div class="theme-row" data-theme="jarvis">
+  <div class="theme-name" style="color:var(--primary)">JARVIS</div>
+  <div class="mini-sw" style="background:var(--primary)">#00d4ff</div>
+  <div class="mini-sw" style="background:var(--accent)">#ff6b35</div>
+  <div class="mini-sw dark" style="background:var(--surface-1)">#0a1622</div>
+  <div class="mini-sw dark" style="background:var(--void)">#000408</div>
+</div>
+<div class="theme-row" data-theme="ultron">
+  <div class="theme-name" style="color:var(--primary)">ULTRON</div>
+  <div class="mini-sw" style="background:var(--primary)">#ff1744</div>
+  <div class="mini-sw" style="background:var(--accent)">#ff8500</div>
+  <div class="mini-sw dark" style="background:var(--surface-1)">#0a1622</div>
+  <div class="mini-sw dark" style="background:var(--void)">#000408</div>
+</div>
+<div class="theme-row" data-theme="friday">
+  <div class="theme-name" style="color:var(--primary)">FRIDAY</div>
+  <div class="mini-sw" style="background:var(--primary)">#ffb86b</div>
+  <div class="mini-sw" style="background:var(--accent)">#ff5d8f</div>
+  <div class="mini-sw dark" style="background:var(--surface-1)">#0a1622</div>
+  <div class="mini-sw dark" style="background:var(--void)">#000408</div>
+</div>
+<div class="theme-row" data-theme="vision">
+  <div class="theme-name" style="color:var(--primary)">VISION</div>
+  <div class="mini-sw" style="background:var(--primary)">#00ff9c</div>
+  <div class="mini-sw" style="background:var(--accent)">#00d4ff</div>
+  <div class="mini-sw dark" style="background:var(--surface-1)">#0a1622</div>
+  <div class="mini-sw dark" style="background:var(--void)">#000408</div>
+</div>
+<div class="theme-row" data-theme="stark">
+  <div class="theme-name" style="color:var(--primary)">STARK</div>
+  <div class="mini-sw" style="background:var(--primary)">#ffc107</div>
+  <div class="mini-sw" style="background:var(--accent)">#ff3030</div>
+  <div class="mini-sw dark" style="background:var(--surface-1)">#0a1622</div>
+  <div class="mini-sw dark" style="background:var(--void)">#000408</div>
+</div>
+<div class="theme-row" data-theme="mono">
+  <div class="theme-name" style="color:var(--primary)">MONO</div>
+  <div class="mini-sw" style="background:var(--primary)">#c4f0ff</div>
+  <div class="mini-sw" style="background:var(--fg-3)">#607078</div>
+  <div class="mini-sw dark" style="background:var(--surface-1)">#0a1622</div>
+  <div class="mini-sw dark" style="background:var(--void)">#000408</div>
+</div>
+
+<div class="label-row" style="margin-top:6px">Six themes flip the semantic layer; surfaces stay deep-black across all.</div>
+</div></body></html>

@@ -53,6 +53,8 @@ from dispatch_registry import DispatchRegistry
 from planner import TaskPlanner, detect_planning_mode, BYPASS_PHRASES
 from agents.vision import VisionAgent
 from agents.multilingual import detect_language, is_supported, translate, get_voice, get_language_name
+from agents.system_info import get_system_info_gatherer
+from agents.diagnostics import get_system_diagnostician
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
 log = logging.getLogger("jarvis")
@@ -1209,42 +1211,43 @@ async def _llm_call(system: str, messages: list[dict], max_tokens: int = 250) ->
             content = " ".join(b.get("text", "") for b in content if isinstance(b, dict))
         chat_msgs.append({"role": role, "content": content})
 
-    # Primary LLM (Groq when configured) — single attempt, fail fast on rate limits
+    # Primary LLM (Groq when configured) — retry up to 3 times on 429, silent backoff
     if OLLAMA_BASE_URL and OLLAMA_BASE_URL.rstrip('/') != LOCAL_OLLAMA_URL.rstrip('/'):
-        try:
-            return await _call_openai_compat(
-                OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_API_KEY,
-                chat_msgs, max_tokens,
-                connect_timeout=5.0, read_timeout=30.0,
-            )
-        except httpx.HTTPStatusError as e:
-            status = e.response.status_code
-            if status == 429:
-                # Respect Retry-After header — but only wait if it's short (≤ 4s)
-                retry_after = e.response.headers.get("retry-after", "")
-                try:
-                    wait_s = float(retry_after)
-                except (ValueError, TypeError):
-                    wait_s = 99.0  # Unknown — don't wait
-                if 0 < wait_s <= 4.0:
-                    log.warning(f"Primary LLM 429, waiting {wait_s}s (Retry-After header)")
-                    await asyncio.sleep(wait_s)
+        _backoff = [1.0, 2.0, 4.0]  # seconds between retries
+        for _attempt, _wait in enumerate([0.0] + _backoff):
+            if _wait > 0:
+                log.warning(f"LLM 429 — waiting {_wait}s before retry {_attempt}/{len(_backoff)}")
+                await asyncio.sleep(_wait)
+            try:
+                return await _call_openai_compat(
+                    OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_API_KEY,
+                    chat_msgs, max_tokens,
+                    connect_timeout=5.0, read_timeout=30.0,
+                )
+            except httpx.HTTPStatusError as e:
+                status = e.response.status_code
+                if status == 429:
+                    # Use Retry-After header if provided and reasonable
+                    retry_after = e.response.headers.get("retry-after", "")
                     try:
-                        return await _call_openai_compat(
-                            OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_API_KEY,
-                            chat_msgs, max_tokens,
-                            connect_timeout=5.0, read_timeout=30.0,
-                        )
-                    except Exception as e2:
-                        log.warning(f"Primary LLM retry failed: {e2}")
+                        header_wait = float(retry_after)
+                        if 0 < header_wait < 30:
+                            _backoff[min(_attempt, len(_backoff)-1)] = header_wait
+                    except (ValueError, TypeError):
+                        pass
+                    if _attempt < len(_backoff):
+                        continue  # try again with next backoff
+                    log.warning("LLM 429 — all retries exhausted, falling through")
+                elif 500 <= status < 600:
+                    log.warning(f"LLM {status} server error on attempt {_attempt+1}")
+                    if _attempt < len(_backoff):
+                        continue
                 else:
-                    log.warning(f"Primary LLM rate limited (429) — failing fast, no retry")
-            elif 500 <= status < 600:
-                log.warning(f"Primary LLM {status} server error — failing fast")
-            else:
-                log.warning(f"Primary LLM HTTP {status}: {e}")
-        except Exception as e:
-            log.warning(f"Primary LLM error: {e}")
+                    log.warning(f"LLM HTTP {status}: {e}")
+                    break
+            except Exception as e:
+                log.warning(f"LLM error (attempt {_attempt+1}): {e}")
+                break
 
     # Local Ollama fallback — only if explicitly enabled AND different from primary
     _local_enabled = os.getenv("LOCAL_OLLAMA", "false").lower() in ("true", "1", "yes")
@@ -1258,7 +1261,7 @@ async def _llm_call(system: str, messages: list[dict], max_tokens: int = 250) ->
         except Exception as e:
             log.debug(f"Local Ollama unavailable: {e}")
 
-    return "Apologies, sir. I'm rate limited — try again in a moment."
+    return "One moment, sir."
 
 
 async def generate_response(
@@ -2713,6 +2716,52 @@ async def api_agents_status():
     """Returns online/offline + usage% for each named agent."""
     _AGENT_STATES["vision"] = vision_agent.get_status()
     return _AGENT_STATES
+
+# ---------------------------------------------------------------------------
+# System Diagnostics & Info APIs
+# ---------------------------------------------------------------------------
+
+@app.get("/api/system/info")
+async def api_system_info():
+    """Returns detailed system information for VISION context."""
+    gatherer = get_system_info_gatherer()
+    return gatherer.get_diagnostics_context()
+
+@app.get("/api/system/health-score")
+async def api_health_score():
+    """Returns overall system health score (0-100)."""
+    diagnostician = get_system_diagnostician()
+    score = diagnostician.get_system_health_score()
+    issues = diagnostician.diagnose()
+    return {
+        "health_score": score,
+        "issues_detected": len(issues),
+        "critical_issues": sum(1 for i in issues if i["severity"] == "critical"),
+        "issues": issues,
+    }
+
+@app.get("/api/system/diagnose")
+async def api_diagnose():
+    """Run full system diagnostics."""
+    diagnostician = get_system_diagnostician()
+    issues = diagnostician.diagnose()
+    summary = diagnostician.get_summary_for_vision()
+    return {
+        "summary": summary,
+        "issues": issues,
+        "can_auto_fix": [i["name"] for i in issues if i["can_auto_fix"]],
+    }
+
+@app.post("/api/system/fix/{issue_name}")
+async def api_apply_fix(issue_name: str):
+    """Apply a fix for a specific issue."""
+    diagnostician = get_system_diagnostician()
+    success = diagnostician.apply_fix(issue_name)
+    return {
+        "issue": issue_name,
+        "success": success,
+        "message": f"Fix {'applied' if success else 'failed'} for {issue_name}",
+    }
 
 # ---------------------------------------------------------------------------
 # Static file serving (frontend)

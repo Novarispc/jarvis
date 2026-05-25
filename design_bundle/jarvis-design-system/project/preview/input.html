@@ -1,0 +1,60 @@
+<!doctype html>
+<html data-theme="jarvis"><head><meta charset="utf-8"><title>Inputs</title>
+<link rel="stylesheet" href="_base.css">
+<style>
+  .field {
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+  }
+  .field-label {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 10px;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--fg-3);
+  }
+  .input {
+    background: var(--surface-0);
+    border: 1px solid var(--border-2);
+    border-bottom-color: var(--primary);
+    color: var(--fg-1);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    letter-spacing: 0.1em;
+    padding: 10px 12px;
+    outline: none;
+  }
+  .input:focus {
+    border-color: var(--primary);
+    box-shadow: var(--glow-sm);
+  }
+  .input::placeholder { color: var(--fg-3); }
+  .voice-input {
+    display:flex; align-items:center; gap:10px;
+    background: var(--surface-0);
+    border: 1px solid var(--primary);
+    box-shadow: var(--glow-sm);
+    padding: 10px 14px;
+  }
+  .voice-dot {
+    width:10px; height:10px; border-radius:50%;
+    background: var(--primary);
+    box-shadow: var(--glow-sm);
+    animation: pulse 1.4s var(--ease-hud) infinite;
+  }
+  @keyframes pulse { 50% { opacity: 0.3; transform: scale(0.8);} }
+</style></head>
+<body><div class="card-frame col" style="gap:14px;">
+  <div class="field">
+    <div class="field-label">COMMAND INPUT</div>
+    <input class="input" placeholder="awaiting directive…" value="open browser">
+  </div>
+  <div class="voice-input">
+    <div class="voice-dot"></div>
+    <div style="font-family:var(--font-mono); font-size:12px; letter-spacing:0.22em; color:var(--primary); flex:1;">▸ LISTENING · "JARVIS, BRIEF ME"</div>
+    <div style="font-family:var(--font-mono); font-size:11px; color:var(--accent);">14.2 dB</div>
+  </div>
+  <div class="label-row">Hairline top/sides, bright bottom = idle. Focus + voice-active = full glow.</div>
+</div></body></html>

@@ -1,0 +1,33 @@
+<!doctype html>
+<html data-theme="jarvis"><head><meta charset="utf-8"><title>Tab launcher</title>
+<link rel="stylesheet" href="_base.css">
+<style>
+  .tab {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    padding: 8px 14px 8px 22px;
+    background: linear-gradient(90deg, var(--accent-deep) 0%, var(--accent) 100%);
+    color: var(--fg-on-accent);
+    width: 180px;
+    clip-path: polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%);
+    box-shadow: var(--glow-accent);
+    cursor: pointer;
+    position: relative;
+  }
+  .tab.cyan {
+    background: linear-gradient(90deg, var(--primary-deep) 0%, var(--primary) 100%);
+    color: var(--fg-on-primary);
+    box-shadow: var(--glow-sm);
+  }
+</style></head>
+<body><div class="card-frame col" style="gap:8px;">
+  <div class="tab">▸ CONTROL PANEL</div>
+  <div class="tab">▸ STEAM</div>
+  <div class="tab">▸ WHATSAPP</div>
+  <div class="tab cyan">▸ JARVIS CORE</div>
+  <div class="tab">▸ SKYPE</div>
+  <div class="label-row">Angled "tab" launchers from the reference HUD — left edge of dashboard.</div>
+</div></body></html>

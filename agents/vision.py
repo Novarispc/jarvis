@@ -323,6 +323,44 @@ class VisionAgent:
             q = re.sub(pat, "", q, flags=re.IGNORECASE).strip()
         return q if q else question
 
+    def _is_system_question(self, question: str) -> bool:
+        """Check if this is a system/PC/hardware/diagnostics question."""
+        q = question.lower()
+        system_keywords = [
+            "cpu", "memory", "ram", "disk", "hard drive", "ssd",
+            "temperature", "temp", "cpu temp", "overheating", "overheat",
+            "slow", "laggy", "lag", "crash", "crash", "freeze", "frozen",
+            "performance", "bottleneck", "bottlenecking",
+            "process", "service", "application", "app",
+            "driver", "drivers", "bios", "firmware",
+            "resource", "resources", "usage", "utilization",
+            "windows", "system", "pc", "computer", "machine",
+            "fix", "repair", "issue", "problem", "error", "trouble",
+            "diagnose", "diagnosis", "health", "health check",
+            "optimize", "optimization", "speed up", "cleanup",
+            "storage", "cache", "temp files", "garbage",
+        ]
+        return any(keyword in q for keyword in system_keywords)
+
+    async def _get_system_context(self) -> str:
+        """Get current system diagnostics context."""
+        try:
+            from agents.diagnostics import get_system_diagnostician
+            from agents.system_info import get_system_info_gatherer
+
+            loop = asyncio.get_event_loop()
+            diagnostician = get_system_diagnostician()
+            gatherer = get_system_info_gatherer()
+
+            # Run diagnostics in executor to avoid blocking
+            diag_summary = await loop.run_in_executor(None, diagnostician.get_summary_for_vision)
+            sys_summary = await loop.run_in_executor(None, gatherer.get_system_summary)
+
+            return f"{diag_summary}\n\n{sys_summary}"
+        except Exception as e:
+            log.warning(f"Failed to get system context: {e}")
+            return ""
+
     def _classify(self, question: str) -> str:
         q = question.lower()
         if any(w in q for w in ["difference between", "compare", "vs ", "versus"]):
@@ -352,22 +390,37 @@ class VisionAgent:
     # Public API
     # ------------------------------------------------------------------
 
-    async def ask(self, question: str) -> VisionResponse:
-        """Answer a knowledge question. Main entry point."""
+    async def ask(self, question: str, include_system_context: bool = False) -> VisionResponse:
+        """Answer a knowledge question. Main entry point.
+
+        If include_system_context=True, enriches response with current system diagnostics
+        for PC/hardware/issue-related questions.
+        """
         self._active        = True
         self._total_queries += 1
         log.info(f"VISION ← {question!r}")
 
         try:
+            # Check if this is a system/diagnostics question
+            is_system_question = self._is_system_question(question)
+
             # 1. Check local knowledge DB (fastest path)
             loop = asyncio.get_event_loop()
             norm = self._normalize(question)
             stored = await loop.run_in_executor(None, self._db_lookup, norm)
             if stored and stored.get("confidence") in ("high", "medium"):
                 log.info("VISION: knowledge DB hit")
+                answer = stored["answer"]
+
+                # Enrich with system context if this is a system question
+                if is_system_question and include_system_context:
+                    system_context = await self._get_system_context()
+                    if system_context:
+                        answer = f"{answer}\n\n[CURRENT SYSTEM STATE]\n{system_context}"
+
                 return VisionResponse(
                     confidence=stored["confidence"],
-                    answer=stored["answer"],
+                    answer=answer,
                     source="knowledge_db",
                     wikipedia_url=stored.get("wikipedia_url"),
                     follow_up=stored.get("follow_up"),
@@ -429,9 +482,16 @@ class VisionAgent:
 
             follow_up = self._follow_up(question, article_ttl)
 
+            answer = summary
+            # Enrich with system context if this is a system question
+            if is_system_question and include_system_context:
+                system_context = await self._get_system_context()
+                if system_context:
+                    answer = f"{answer}\n\n[CURRENT SYSTEM STATE]\n{system_context}"
+
             response = VisionResponse(
                 confidence=confidence,
-                answer=summary,
+                answer=answer,
                 source="wikipedia",
                 wikipedia_url=source_url,
                 follow_up=follow_up,

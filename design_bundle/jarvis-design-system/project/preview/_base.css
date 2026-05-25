@@ -1,0 +1,50 @@
+/* Shared base for preview cards. Each card is ~700×Variable. */
+@import url('../colors_and_type.css');
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--void);
+  color: var(--fg-1);
+  font-family: var(--font-body);
+  overflow: hidden;
+}
+body {
+  background-image: var(--bg-grid);
+  padding: 20px;
+  box-sizing: border-box;
+  min-height: 100vh;
+}
+.card-frame {
+  width: 100%;
+  box-sizing: border-box;
+}
+.row { display: flex; gap: 12px; align-items: center; }
+.col { display: flex; flex-direction: column; gap: 8px; }
+.grow { flex: 1; }
+.swatch {
+  flex: 1;
+  height: 64px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 8px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  color: var(--fg-on-primary);
+  position: relative;
+  border: 1px solid var(--border-1);
+}
+.swatch .name { font-weight: bold; }
+.swatch .hex { opacity: 0.85; }
+.swatch.dark { color: var(--fg-1); }
+.label-row {
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--track-xwide);
+  text-transform: uppercase;
+  color: var(--fg-3);
+}

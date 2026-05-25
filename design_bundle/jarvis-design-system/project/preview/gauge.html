@@ -1,0 +1,108 @@
+<!doctype html>
+<html data-theme="jarvis"><head><meta charset="utf-8"><title>Circular gauge</title>
+<link rel="stylesheet" href="_base.css">
+<style>
+  .gauge-wrap { display:flex; gap:24px; align-items:center; }
+  .gauge {
+    width: 160px;
+    height: 160px;
+    position: relative;
+  }
+  .gauge svg { width: 100%; height: 100%; display:block; }
+  .gauge .ring-track { fill: none; stroke: var(--border-1); stroke-width: 1; }
+  .gauge .ring-bold { fill: none; stroke: var(--primary); stroke-width: 2; opacity: 0.9; }
+  .gauge .ring-arc { fill: none; stroke: var(--primary); stroke-width: 6; filter: drop-shadow(0 0 6px var(--primary-glow)); }
+  .gauge .tick { stroke: var(--primary); stroke-width: 1; }
+  .gauge .tick-dim { stroke: var(--border-2); stroke-width: 1; }
+  .gauge .label-svg { font-family: var(--font-mono); font-size: 9px; fill: var(--fg-3); letter-spacing: 0.18em; }
+  .gauge-center {
+    position:absolute; inset:0;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    font-family: var(--font-mono);
+    pointer-events:none;
+  }
+  .gauge-value { font-size: 26px; color: var(--primary); font-variant-numeric: tabular-nums; }
+  .gauge-unit { font-size: 9px; color: var(--fg-3); letter-spacing: 0.22em; margin-top:2px;}
+</style></head>
+<body><div class="card-frame">
+<div class="gauge-wrap">
+
+  <!-- gauge A: CPU -->
+  <div class="gauge">
+    <svg viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="46" class="ring-track"/>
+      <circle cx="50" cy="50" r="40" class="ring-track"/>
+      <!-- tick marks around 360 -->
+      <g>
+        <g id="ticks-a"></g>
+      </g>
+      <!-- arc 0..270deg sweep -->
+      <circle cx="50" cy="50" r="36" class="ring-arc"
+        style="stroke-dasharray: 152 226; transform: rotate(-90deg); transform-origin: 50% 50%;"/>
+      <circle cx="50" cy="50" r="36" class="ring-track"
+        style="stroke-dasharray: 152 226; stroke-dashoffset: -152; transform: rotate(-90deg); transform-origin: 50% 50%;"/>
+      <circle cx="50" cy="50" r="2" fill="var(--primary)"/>
+    </svg>
+    <div class="gauge-center">
+      <div class="gauge-value">67</div>
+      <div class="gauge-unit">CPU LOAD %</div>
+    </div>
+  </div>
+
+  <!-- gauge B: REACTOR core circle -->
+  <div class="gauge">
+    <svg viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="46" class="ring-bold"/>
+      <circle cx="50" cy="50" r="38" class="ring-track"/>
+      <circle cx="50" cy="50" r="32" class="ring-track"/>
+      <circle cx="50" cy="50" r="22" class="ring-bold" style="opacity:0.4"/>
+      <circle cx="50" cy="50" r="14" fill="var(--primary)" opacity="0.18"/>
+      <circle cx="50" cy="50" r="14" class="ring-bold"/>
+      <circle cx="50" cy="50" r="6" fill="var(--primary)" style="filter: drop-shadow(0 0 8px var(--primary-glow));"/>
+      <!-- crosshair -->
+      <line x1="2" y1="50" x2="14" y2="50" stroke="var(--primary)" stroke-width="1"/>
+      <line x1="86" y1="50" x2="98" y2="50" stroke="var(--primary)" stroke-width="1"/>
+      <line x1="50" y1="2" x2="50" y2="14" stroke="var(--primary)" stroke-width="1"/>
+      <line x1="50" y1="86" x2="50" y2="98" stroke="var(--primary)" stroke-width="1"/>
+    </svg>
+    <div class="gauge-center" style="justify-content:flex-end; padding-bottom:8px;">
+      <div class="gauge-unit" style="color:var(--primary);">REACTOR</div>
+    </div>
+  </div>
+
+  <!-- gauge C: orange sector readout -->
+  <div class="gauge">
+    <svg viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="46" class="ring-track"/>
+      <!-- orange filled sector -->
+      <path d="M50 50 L 50 4 A46 46 0 0 1 96 50 Z" fill="var(--accent)" opacity="0.7"/>
+      <path d="M50 50 L 96 50 A46 46 0 0 1 50 96 Z" fill="var(--accent)" opacity="0.45"/>
+      <circle cx="50" cy="50" r="32" fill="var(--surface-1)"/>
+      <circle cx="50" cy="50" r="32" class="ring-bold"/>
+      <circle cx="50" cy="50" r="20" class="ring-track"/>
+      <circle cx="50" cy="50" r="3" fill="var(--accent)"/>
+    </svg>
+    <div class="gauge-center">
+      <div class="gauge-value" style="color:var(--accent);">47.2</div>
+      <div class="gauge-unit" style="color:var(--accent);">GB USED</div>
+    </div>
+  </div>
+
+</div>
+</div>
+<script>
+  // tick marks for gauge A
+  const ticks = document.getElementById('ticks-a');
+  for (let i = 0; i < 60; i++) {
+    const a = (i * 6) * Math.PI / 180;
+    const r1 = 44, r2 = i % 5 === 0 ? 40 : 42;
+    const x1 = 50 + Math.cos(a) * r1, y1 = 50 + Math.sin(a) * r1;
+    const x2 = 50 + Math.cos(a) * r2, y2 = 50 + Math.sin(a) * r2;
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', x1); line.setAttribute('y1', y1);
+    line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+    line.setAttribute('class', i % 5 === 0 ? 'tick' : 'tick-dim');
+    ticks.appendChild(line);
+  }
+</script>
+</body></html>

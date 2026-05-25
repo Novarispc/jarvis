@@ -1,91 +1,96 @@
-INFO:     Started server process [38988]
+2026-05-25 06:58:45,028 [jarvis.vision] VISION online — db: C:\Users\novar\jarvis\data\vision_knowledge.db
+2026-05-25 06:58:45,078 [jarvis] psutil not installed — /api/system/stats will return zeros. Run: pip install psutil
+2026-05-25 06:58:45,133 [jarvis.vision] VISION online — db: C:\Users\novar\jarvis\data\vision_knowledge.db
+2026-05-25 06:58:45,145 [jarvis] psutil not installed — /api/system/stats will return zeros. Run: pip install psutil
+INFO:     Started server process [28304]
 INFO:     Waiting for application startup.
-2026-05-23 13:32:48,386 [jarvis] Context refresh thread started
-2026-05-23 13:32:48,387 [jarvis] JARVIS server starting
+2026-05-25 06:58:45,202 [jarvis] Context refresh thread started
+2026-05-25 06:58:45,202 [jarvis] JARVIS server starting
 INFO:     Application startup complete.
 INFO:     Uvicorn running on https://0.0.0.0:8340 (Press CTRL+C to quit)
-INFO:     127.0.0.1:54903 - "WebSocket /ws/voice" [accepted]
-2026-05-23 13:32:52,322 [jarvis] Voice WebSocket connected
+INFO:     127.0.0.1:52706 - "WebSocket /ws/voice" [accepted]
+2026-05-25 06:58:50,053 [jarvis] Voice WebSocket connected
 INFO:     connection open
-INFO:     127.0.0.1:61877 - "WebSocket /ws/voice" [accepted]
-2026-05-23 13:32:52,641 [jarvis] Voice WebSocket connected
+2026-05-25 07:02:54,996 [jarvis] Voice WebSocket disconnected
+INFO:     connection closed
+INFO:     127.0.0.1:59069 - "WebSocket /ws/voice" [accepted]
+2026-05-25 07:02:55,157 [jarvis] Voice WebSocket connected
 INFO:     connection open
-2026-05-23 13:32:53,300 [jarvis] Edge TTS: 13392 bytes
-2026-05-23 13:32:53,301 [jarvis] JARVIS: Good day, sir.
-INFO:     127.0.0.1:56426 - "WebSocket /ws/voice" [accepted]
-2026-05-23 13:32:56,217 [jarvis] Voice WebSocket connected
+2026-05-25 07:02:59,041 [jarvis] User: Hey Jarvis
+2026-05-25 07:02:59,048 [jarvis] Scanned 3 projects
+2026-05-25 07:02:59,885 [httpx] HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-25 07:03:01,176 [jarvis] Edge TTS (en-GB-RyanNeural): 15408 bytes
+2026-05-25 07:03:01,178 [jarvis] JARVIS: What can I do for you, sir?
+2026-05-25 07:03:10,152 [jarvis] User: Can you tell me a quote for today
+2026-05-25 07:03:10,623 [httpx] HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+2026-05-25 07:03:10,631 [jarvis] LLM 429 — waiting 1.0s before retry 1/3
+2026-05-25 07:03:12,372 [httpx] HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-25 07:03:13,799 [jarvis] Edge TTS (en-GB-RyanNeural): 47808 bytes
+2026-05-25 07:03:13,804 [jarvis] JARVIS: The quote for today is from Maya Angelou: "Do the best you can until you know better. Then when you know better, do better."
+2026-05-25 07:03:34,323 [jarvis] User: Thank you Jarvis
+2026-05-25 07:03:34,656 [httpx] HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+2026-05-25 07:03:34,665 [jarvis] LLM 429 — waiting 1.0s before retry 1/3
+2026-05-25 07:03:36,034 [httpx] HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+2026-05-25 07:03:36,042 [jarvis] LLM 429 — waiting 2.0s before retry 2/3
+2026-05-25 07:03:38,466 [httpx] HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+2026-05-25 07:03:38,477 [jarvis] LLM 429 — waiting 4.0s before retry 3/3
+2026-05-25 07:03:42,879 [httpx] HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+2026-05-25 07:03:42,888 [jarvis] LLM 429 — all retries exhausted, falling through
+2026-05-25 07:03:43,906 [jarvis] Edge TTS (en-GB-RyanNeural): 14400 bytes
+2026-05-25 07:03:43,916 [jarvis] JARVIS: One moment, sir.
+2026-05-25 07:04:09,772 [jarvis] User: Thank you Jarvis
+2026-05-25 07:04:10,431 [httpx] HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-25 07:04:11,351 [jarvis] Edge TTS (en-GB-RyanNeural): 10224 bytes
+2026-05-25 07:04:11,362 [jarvis] JARVIS: [Silence]
+2026-05-25 07:12:53,946 [jarvis] Voice WebSocket disconnected
+INFO:     connection closed
+INFO:     127.0.0.1:63683 - "WebSocket /ws/voice" [accepted]
+2026-05-25 07:12:56,046 [jarvis] Voice WebSocket connected
 INFO:     connection open
-2026-05-23 13:32:58,805 [jarvis] Voice WebSocket disconnected
+2026-05-25 07:17:57,858 [jarvis] Voice WebSocket disconnected
 INFO:     connection closed
-INFO:     127.0.0.1:54265 - "WebSocket /ws/voice" [accepted]
-2026-05-23 13:32:58,970 [jarvis] Voice WebSocket connected
+INFO:     127.0.0.1:59844 - "WebSocket /ws/voice" [accepted]
+2026-05-25 07:18:03,339 [jarvis] Voice WebSocket connected
 INFO:     connection open
-INFO:     127.0.0.1:58916 - "WebSocket /ws/voice" [accepted]
-2026-05-23 13:32:59,544 [jarvis] Voice WebSocket connected
+2026-05-25 07:51:26,857 [jarvis] Voice WebSocket disconnected
+INFO:     connection closed
+INFO:     127.0.0.1:51885 - "WebSocket /ws/voice" [accepted]
+2026-05-25 07:51:27,066 [jarvis] Voice WebSocket connected
 INFO:     connection open
-2026-05-23 13:52:53,453 [jarvis] Voice WebSocket disconnected
+2026-05-25 07:51:35,741 [jarvis] Voice WebSocket disconnected
 INFO:     connection closed
-INFO:     127.0.0.1:60280 - "WebSocket /ws/voice" [accepted]
-2026-05-23 13:52:53,641 [jarvis] Voice WebSocket connected
+INFO:     127.0.0.1:53829 - "WebSocket /ws/voice" [accepted]
+2026-05-25 07:51:35,985 [jarvis] Voice WebSocket connected
 INFO:     connection open
-2026-05-23 13:52:55,565 [jarvis] Voice WebSocket disconnected
+2026-05-25 07:51:49,815 [jarvis] User: Via system Telemetry not shown
+2026-05-25 07:51:50,936 [httpx] HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-25 07:51:52,082 [jarvis] Edge TTS (en-GB-RyanNeural): 24336 bytes
+2026-05-25 07:51:52,085 [jarvis] JARVIS: It's likely your request isn't directly actionable, sir.
+2026-05-25 07:52:47,945 [jarvis] Voice WebSocket disconnected
 INFO:     connection closed
-2026-05-23 13:52:58,513 [jarvis] Voice WebSocket disconnected
-INFO:     connection closed
-2026-05-23 13:53:02,344 [jarvis] Voice WebSocket disconnected
-INFO:     connection closed
-2026-05-23 13:53:02,385 [jarvis] Voice WebSocket disconnected
-INFO:     connection closed
-INFO:     127.0.0.1:52518 - "WebSocket /ws/voice" [accepted]
-2026-05-23 13:53:02,518 [jarvis] Voice WebSocket connected
+INFO:     127.0.0.1:60850 - "WebSocket /ws/voice" [accepted]
+2026-05-25 07:52:48,164 [jarvis] Voice WebSocket connected
 INFO:     connection open
-2026-05-23 13:53:04,071 [jarvis] Voice WebSocket disconnected
+2026-05-25 07:55:00,752 [jarvis] Voice WebSocket disconnected
 INFO:     connection closed
-INFO:     127.0.0.1:50829 - "WebSocket /ws/voice" [accepted]
-2026-05-23 13:53:04,183 [jarvis] Voice WebSocket connected
+INFO:     127.0.0.1:56753 - "WebSocket /ws/voice" [accepted]
+2026-05-25 07:55:00,885 [jarvis] Voice WebSocket connected
 INFO:     connection open
-2026-05-23 13:53:26,655 [jarvis] User: Is Friday online
-2026-05-23 13:53:26,670 [jarvis] Scanned 1 projects
-2026-05-23 13:53:27,776 [httpx] HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-2026-05-23 13:53:27,782 [jarvis] LLM embedded action: {'action': 'prompt_project', 'target': 'Friday ||| Check the current status and availability of Friday.'}
-2026-05-23 13:53:27,795 [jarvis.dispatch] Registered dispatch #7: Friday
-2026-05-23 13:53:28,124 [httpx] HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-2026-05-23 13:53:28,741 [jarvis] Edge TTS: 20016 bytes
-2026-05-23 13:53:28,743 [jarvis] JARVIS: I'm afraid I don't have that information, sir.
-2026-05-23 13:53:28,836 [jarvis] Edge TTS: 21744 bytes
-2026-05-23 13:55:48,250 [jarvis] Voice WebSocket disconnected
+2026-05-25 07:55:07,501 [jarvis] User: Hey Jarvis
+2026-05-25 07:55:08,585 [httpx] HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-25 07:55:10,983 [jarvis] Edge TTS (en-GB-RyanNeural): 62208 bytes
+2026-05-25 07:55:10,990 [jarvis] JARVIS: Welcome back, sir. For you, sir, always. Shall I assist you with something specific or just get you caught up on the current status?
+2026-05-25 07:55:13,800 [jarvis] User: What is the time now
+2026-05-25 07:55:14,407 [httpx] HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+2026-05-25 07:55:14,410 [jarvis] LLM 429 — waiting 1.0s before retry 1/3
+2026-05-25 07:55:16,156 [httpx] HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+2026-05-25 07:55:16,159 [jarvis] LLM 429 — waiting 2.0s before retry 2/3
+2026-05-25 07:55:18,649 [httpx] HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+2026-05-25 07:55:18,653 [jarvis] LLM 429 — waiting 4.0s before retry 3/3
 INFO:     connection closed
-INFO:     127.0.0.1:56653 - "WebSocket /ws/voice" [accepted]
-2026-05-23 13:55:48,422 [jarvis] Voice WebSocket connected
+INFO:     127.0.0.1:62434 - "WebSocket /ws/voice" [accepted]
+2026-05-25 07:55:19,796 [jarvis] Voice WebSocket connected
 INFO:     connection open
-2026-05-23 13:55:51,237 [jarvis] Voice WebSocket disconnected
-INFO:     connection closed
-INFO:     127.0.0.1:54017 - "WebSocket /ws/voice" [accepted]
-2026-05-23 13:55:51,365 [jarvis] Voice WebSocket connected
-INFO:     connection open
-2026-05-23 13:55:59,228 [jarvis] Voice WebSocket disconnected
-INFO:     connection closed
-INFO:     127.0.0.1:59443 - "WebSocket /ws/voice" [accepted]
-2026-05-23 13:55:59,379 [jarvis] Voice WebSocket connected
-INFO:     connection open
-2026-05-23 13:56:04,241 [jarvis] Voice WebSocket disconnected
-INFO:     connection closed
-INFO:     127.0.0.1:50843 - "WebSocket /ws/voice" [accepted]
-2026-05-23 13:56:04,378 [jarvis] Voice WebSocket connected
-INFO:     connection open
-2026-05-23 13:56:23,757 [jarvis] User: What is your name I just now told you you're not able to follow me I came here to see myself
-2026-05-23 13:56:24,451 [httpx] HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-2026-05-23 13:56:24,453 [jarvis] LLM embedded action: {'action': 'remember', 'target': "User mentioned a previous conversation that I don't have record of."}
-2026-05-23 13:56:24,457 [jarvis.memory] Stored memory [fact]: User mentioned a previous conversation that I don't have rec
-2026-05-23 13:56:24,457 [jarvis] Memory stored: User mentioned a previous conversation that I don't have rec
-2026-05-23 13:56:24,877 [httpx] HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-2026-05-23 13:56:24,882 [jarvis.memory] Stored memory [person]: JARVIS
-2026-05-23 13:56:26,705 [jarvis] Edge TTS: 75168 bytes
-2026-05-23 13:56:26,719 [jarvis] JARVIS: You're referring to me as if I should recall a previous conversation, sir. I'm afraid I don't have that information, as our conversation just started. My name is JARVIS, by the way.
-2026-05-23 13:56:42,881 [jarvis] Voice WebSocket disconnected
-INFO:     connection closed
-INFO:     127.0.0.1:56177 - "WebSocket /ws/voice" [accepted]
-2026-05-23 13:56:43,070 [jarvis] Voice WebSocket connected
-INFO:     connection open
-2026-05-23 13:56:44,511 [jarvis] Voice WebSocket disconnected
-INFO:     connection closed
+2026-05-25 07:55:23,528 [httpx] HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-25 07:58:22,016 [jarvis] User: Jarvis
+2026-05-25 07:58:23,302 [httpx] HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"

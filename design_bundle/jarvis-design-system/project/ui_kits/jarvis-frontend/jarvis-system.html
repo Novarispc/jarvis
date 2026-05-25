@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>J.A.R.V.I.S. AI System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Rajdhani:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../colors_and_type.css">
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: var(--font-body);
+      background: var(--void);
+      background-image: var(--bg-grid);
+      color: var(--primary);
+      overflow: hidden;
+      height: 100vh;
+    }
+
+    .jarvis-system {
+      width: 100%;
+      height: 100vh;
+      display: grid;
+      grid-template-columns: 280px 1fr 320px;
+      grid-template-rows: 80px 1fr 100px;
+      gap: 0;
+      position: relative;
+      padding: 20px;
+    }
+
+    /* Grid background overlay */
+    .grid-overlay {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .corner-bracket {
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      border-color: var(--primary);
+      border-style: solid;
+      opacity: 0.6;
+    }
+    .corner-bracket.tl { top: 16px; left: 16px; border-width: 2px 0 0 2px; }
+    .corner-bracket.tr { top: 16px; right: 16px; border-width: 2px 2px 0 0; }
+    .corner-bracket.bl { bottom: 16px; left: 16px; border-width: 0 0 2px 2px; }
+    .corner-bracket.br { bottom: 16px; right: 16px; border-width: 0 2px 2px 0; }
+
+    /* Top Header */
+    .top-header {
+      grid-column: 1 / 4;
+      grid-row: 1;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 20px;
+      background: rgba(10, 22, 34, 0.85);
+      border: 1px solid var(--border-2);
+      border-bottom: 2px solid var(--primary);
+      box-shadow: 0 4px 20px rgba(0, 217, 255, 0.1);
+      position: relative;
+      z-index: 10;
+    }
+
+    .top-header::before {
+      content: '';
+      position: absolute;
+      top: -1px;
+      left: -1px;
+      width: 30px;
+      height: 30px;
+      border-left: 2px solid var(--primary);
+      border-top: 2px solid var(--primary);
+    }
+
+    .jarvis-title {
+      font-family: var(--font-display);
+      font-weight: 900;
+      font-size: 28px;
+      letter-spacing: 0.4em;
+      color: var(--primary);
+      text-shadow: var(--glow-sm);
+    }
+
+    .system-status {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+
+    .status-pill {
+      padding: 8px 16px;
+      background: rgba(0, 217, 255, 0.1);
+      border: 1px solid var(--primary);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      color: var(--primary);
+      box-shadow: var(--glow-sm);
+    }
+
+    .status-pill.live::before {
+      content: '■ ';
+      animation: blink 2s infinite;
+    }
+
+    @keyframes blink {
+      0%, 49%, 100% { opacity: 1; }
+      50%, 99% { opacity: 0.3; }
+    }
+
+    /* Left Panel - Controls */
+    .left-panel {
+      grid-column: 1;
+      grid-row: 2 / 4;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      padding-top: 20px;
+      z-index: 5;
+    }
+
+    .panel {
+      background: rgba(10, 22, 34, 0.85);
+      border: 1px solid var(--border-2);
+      padding: 16px;
+      position: relative;
+    }
+
+    .panel::before, .panel::after {
+      content: '';
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      border-color: var(--primary);
+      border-style: solid;
+    }
+    .panel::before { top: -1px; left: -1px; border-width: 2px 0 0 2px; }
+    .panel::after { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border-1);
+    }
+
+    .panel-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--primary);
+      box-shadow: var(--glow-sm);
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .panel-title {
+      font-family: var(--font-display);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+      color: var(--fg-1);
+    }
+
+    /* App Launchers */
+    .launcher-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    .hex-btn {
+      width: 100%;
+      aspect-ratio: 0.866;
+      position: relative;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--primary);
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 18px;
+      transition: all 0.3s ease;
+    }
+
+    .hex-btn::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: var(--surface-1);
+      border: 1px solid var(--primary);
+      clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+      box-shadow: var(--glow-sm);
+      transition: all 0.3s ease;
+    }
+
+    .hex-btn:hover::before {
+      background: var(--primary);
+      box-shadow: 0 0 20px var(--primary-glow);
+    }
+
+    .hex-btn:hover {
+      color: var(--fg-on-primary);
+    }
+
+    .hex-btn > * { position: relative; z-index: 1; }
+
+    /* Center - Main Display */
+    .center-display {
+      grid-column: 2;
+      grid-row: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding-top: 20px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .greeting-text {
+      font-family: var(--font-display);
+      font-size: 22px;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: var(--fg-3);
+      text-align: center;
+      position: relative;
+    }
+
+    .greeting-text .highlight {
+      color: var(--primary);
+      text-shadow: var(--glow-sm);
+    }
+
+    /* Particle Orb Container */
+    .orb-container {
+      position: relative;
+      width: 600px;
+      height: 600px;
+    }
+
+    .orb-state-indicator {
+      position: absolute;
+      bottom: -50px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 16px;
+      letter-spacing: 0.3em;
+      color: var(--accent);
+      text-shadow: 0 0 10px var(--accent-glow);
+    }
+
+    /* Right Panel - Telemetry */
+    .right-panel {
+      grid-column: 3;
+      grid-row: 2 / 4;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      padding-top: 20px;
+      z-index: 5;
+    }
+
+    /* Gauges */
+    .gauges-row {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+    }
+
+    .gauge {
+      width: 100%;
+      aspect-ratio: 1;
+      position: relative;
+    }
+
+    .gauge svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .gauge-center {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      pointer-events: none;
+    }
+
+    .gauge-value {
+      font-size: 22px;
+      color: var(--primary);
+      font-variant-numeric: tabular-nums;
+      text-shadow: var(--glow-sm);
+    }
+
+    .gauge-unit {
+      font-size: 9px;
+      color: var(--fg-3);
+      letter-spacing: 0.22em;
+      margin-top: 2px;
+    }
+
+    /* Status Bars */
+    .status-bars {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .status-row {
+      display: grid;
+      grid-template-columns: 80px 1fr 70px;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .status-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      color: var(--fg-3);
+    }
+
+    .status-bar {
+      height: 12px;
+      background: var(--surface-0);
+      border: 1px solid var(--border-2);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .status-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--primary-deep), var(--primary));
+      box-shadow: var(--glow-sm);
+      transition: width 0.5s ease;
+    }
+
+    .status-fill.warn {
+      background: linear-gradient(90deg, var(--accent-deep), var(--accent));
+      box-shadow: var(--glow-accent);
+    }
+
+    .status-value {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      color: var(--primary);
+      text-align: right;
+    }
+
+    .status-value.warn {
+      color: var(--accent);
+    }
+
+    /* Bottom Status Bar */
+    .bottom-bar {
+      grid-column: 1 / 4;
+      grid-row: 3;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 20px;
+      background: rgba(10, 22, 34, 0.85);
+      border: 1px solid var(--border-2);
+      border-top: 2px solid var(--primary);
+      position: relative;
+      z-index: 10;
+    }
+
+    .bottom-bar::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      right: -1px;
+      width: 30px;
+      height: 30px;
+      border-right: 2px solid var(--primary);
+      border-bottom: 2px solid var(--primary);
+    }
+
+    .diagnostics {
+      display: flex;
+      gap: 40px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .diag-item {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .diag-label {
+      font-size: 9px;
+      letter-spacing: 0.2em;
+      color: var(--fg-3);
+    }
+
+    .diag-value {
+      color: var(--primary);
+      font-size: 14px;
+      letter-spacing: 0.1em;
+    }
+
+    /* Voice Controls */
+    .voice-controls {
+      display: flex;
+      gap: 12px;
+    }
+
+    .voice-btn {
+      width: 50px;
+      height: 50px;
+      background: rgba(0, 217, 255, 0.1);
+      border: 2px solid var(--primary);
+      border-radius: 50%;
+      color: var(--primary);
+      font-size: 20px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .voice-btn:hover {
+      background: var(--primary);
+      color: var(--fg-on-primary);
+      box-shadow: 0 0 20px var(--primary-glow);
+    }
+
+    .voice-btn.active {
+      background: var(--primary);
+      color: var(--fg-on-primary);
+      box-shadow: 0 0 30px var(--primary-glow);
+      animation: pulse-ring 1.5s ease-out infinite;
+    }
+
+    @keyframes pulse-ring {
+      0% {
+        box-shadow: 0 0 0 0 rgba(0, 217, 255, 0.7);
+      }
+      70% {
+        box-shadow: 0 0 0 20px rgba(0, 217, 255, 0);
+      }
+      100% {
+        box-shadow: 0 0 0 0 rgba(0, 217, 255, 0);
+      }
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes corePulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.2); opacity: 0.8; }
+    }
+
+    @keyframes burst1 {
+      0% { cy: 50; opacity: 0; r: 1; }
+      30% { opacity: 1; }
+      100% { cy: 5; opacity: 0; r: 3; }
+    }
+
+    @keyframes burst2 {
+      0% { cx: 50; opacity: 0; r: 1; }
+      30% { opacity: 1; }
+      100% { cx: 95; opacity: 0; r: 3; }
+    }
+
+    @keyframes burst3 {
+      0% { cy: 50; opacity: 0; r: 1; }
+      30% { opacity: 1; }
+      100% { cy: 95; opacity: 0; r: 3; }
+    }
+
+    @keyframes burst4 {
+      0% { cx: 50; opacity: 0; r: 1; }
+      30% { opacity: 1; }
+      100% { cx: 5; opacity: 0; r: 3; }
+    }
+
+    @keyframes flicker {
+      0%, 100% { opacity: 0.2; }
+      50% { opacity: 0.8; }
+    }
+  </style>
+</head>
+<body>
+  <div class="grid-overlay">
+    <div class="corner-bracket tl"></div>
+    <div class="corner-bracket tr"></div>
+    <div class="corner-bracket bl"></div>
+    <div class="corner-bracket br"></div>
+  </div>
+
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  
+  <script type="text/babel" src="ParticleOrb.jsx"></script>
+  <script type="text/babel" src="JarvisSystem.jsx"></script>
+  
+  <script type="text/babel">
+    const { JarvisSystem } = window;
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<JarvisSystem />);
+  </script>
+</body>
+</html>

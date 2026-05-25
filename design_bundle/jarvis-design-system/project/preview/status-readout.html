@@ -1,0 +1,41 @@
+<!doctype html>
+<html data-theme="jarvis"><head><meta charset="utf-8"><title>Status readout</title>
+<link rel="stylesheet" href="_base.css">
+<style>
+  .bar {
+    height: 14px;
+    background: var(--surface-0);
+    border: 1px solid var(--border-2);
+    position: relative;
+    overflow:hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary-deep), var(--primary));
+    box-shadow: var(--glow-sm);
+    position: relative;
+  }
+  .bar-fill.warn { background: linear-gradient(90deg, var(--accent-deep), var(--accent)); box-shadow: var(--glow-accent); }
+  .bar-row { display:grid; grid-template-columns: 90px 1fr 80px; gap:10px; align-items:center; }
+  .bar-label { font-family:var(--font-mono); font-size:10px; letter-spacing:0.22em; color:var(--fg-3); }
+  .bar-val { font-family:var(--font-mono); font-size:11px; letter-spacing:0.18em; color:var(--primary); text-align:right; }
+  .bar-val.warn { color: var(--accent); }
+  /* segmented bar */
+  .seg { display:flex; gap:2px; height:14px; }
+  .seg span { flex:1; background: var(--border-1); }
+  .seg span.on { background: var(--primary); box-shadow: var(--glow-sm); }
+  .seg span.warn { background: var(--accent); box-shadow: var(--glow-accent); }
+</style></head>
+<body><div class="card-frame col" style="gap:10px;">
+  <div class="bar-row"><div class="bar-label">CPU LOAD</div><div class="bar"><div class="bar-fill" style="width:33%;"></div></div><div class="bar-val">33%</div></div>
+  <div class="bar-row"><div class="bar-label">MEMORY</div><div class="bar"><div class="bar-fill" style="width:63%;"></div></div><div class="bar-val">63%</div></div>
+  <div class="bar-row"><div class="bar-label">DISK · C:</div><div class="bar"><div class="bar-fill warn" style="width:48%;"></div></div><div class="bar-val warn">48.3 GB</div></div>
+  <div class="bar-row"><div class="bar-label">SIGNAL</div>
+    <div class="seg">
+      <span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span>
+      <span class="on"></span><span class="on"></span><span class="on"></span><span class="warn"></span>
+      <span></span><span></span><span></span><span></span>
+    </div>
+    <div class="bar-val">67%</div>
+  </div>
+</div></body></html>

@@ -32,20 +32,22 @@ log = logging.getLogger("jarvis.vision")
 # ---------------------------------------------------------------------------
 
 KIWIX_SERVER_URL = "http://127.0.0.1:8080"
-KIWIX_SEARCH_API = f"{KIWIX_SERVER_URL}/search?query="
-KIWIX_CONTENT_API = f"{KIWIX_SERVER_URL}/content/"
 
-# Language mapping for offline Wikipedia
+# NOTE: Kiwix /search endpoint rejects multi-language setups with "confusion of tongues".
+# VISION uses direct article lookup: /content/{book_path}/A/{title}
+# Book paths are auto-discovered from /catalog/v2/entries on startup.
+
+# Language config — maps short lang code to human name and ZIM language tag
 LANGUAGE_CONFIG = {
-    "en": {"name": "English Wikipedia", "lang_code": "en"},
-    "en-US": {"name": "English Wikipedia", "lang_code": "en"},
-    "ta": {"name": "Tamil Wikipedia", "lang_code": "ta"},
-    "ta-IN": {"name": "Tamil Wikipedia", "lang_code": "ta"},
-    "ml": {"name": "Malayalam Wikipedia", "lang_code": "ml"},
-    "ml-IN": {"name": "Malayalam Wikipedia", "lang_code": "ml"},
+    "en":    {"name": "English Wikipedia",  "zim_lang": "eng"},
+    "en-US": {"name": "English Wikipedia",  "zim_lang": "eng"},
+    "ta":    {"name": "Tamil Wikipedia",    "zim_lang": "tam"},
+    "ta-IN": {"name": "Tamil Wikipedia",    "zim_lang": "tam"},
+    "ml":    {"name": "Malayalam Wikipedia","zim_lang": "mal"},
+    "ml-IN": {"name": "Malayalam Wikipedia","zim_lang": "mal"},
 }
 
-# Fallback to live Wikipedia if needed (disabled by default for offline-first)
+# Fallback to live Wikipedia if Kiwix is unavailable (disabled by default)
 USE_LIVE_WIKIPEDIA_FALLBACK = False
 
 # Live Wikipedia endpoints (used only if Kiwix unavailable)
@@ -53,10 +55,10 @@ WIKI_API_LIVE  = "https://en.wikipedia.org/w/api.php"
 WIKI_REST_LIVE = "https://en.wikipedia.org/api/rest_v1/page/summary/{}"
 
 # Cache TTLs (seconds)
-CACHE_TTL_STABLE = 30 * 24 * 3600   # 30 days — encyclopedic facts
-CACHE_TTL_EVENTS = 3600              # 1 hour  — current-events articles
+CACHE_TTL_STABLE = 30 * 24 * 3600
+CACHE_TTL_EVENTS = 3600
 
-RATE_LIMIT_DELAY = 0.5               # minimum seconds between local server requests (no rate limiting needed for offline)
+RATE_LIMIT_DELAY = 0.3  # local server — no internet rate limiting needed
 
 
 # ---------------------------------------------------------------------------
@@ -252,98 +254,186 @@ class VisionAgent:
     # ------------------------------------------------------------------
 
     async def _is_kiwix_available(self, client: httpx.AsyncClient) -> bool:
-        """Check if Kiwix server is running and responsive."""
+        """Check if Kiwix server is running by fetching root (returns 200 or 302)."""
         try:
-            resp = await client.get(f"{KIWIX_SERVER_URL}/health", timeout=httpx.Timeout(2.0))
-            return resp.status_code == 200
+            resp = await client.get(KIWIX_SERVER_URL, timeout=httpx.Timeout(2.0),
+                                    follow_redirects=False)
+            return resp.status_code in (200, 302)
         except Exception:
             return False
 
-    async def _try_start_kiwix(self) -> bool:
-        """Attempt to start Kiwix server if it's not running."""
+    async def _discover_book_paths(self, client: httpx.AsyncClient) -> Dict[str, str]:
+        """
+        Discover available ZIM book content paths from Kiwix catalog.
+        Returns dict like {"eng": "/content/wikipedia_en_all_maxi_2026-02", ...}
+        """
         try:
-            # Try to start Kiwix server (Windows/generic approach)
-            # You may need to adjust the command based on your Kiwix setup
-            subprocess.Popen(
-                ["kiwix-serve", "--port", "8080", "C:\\Users\\novar\\JARVIS_WIKI\\Kiwix\\*"],
-                stderr=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
+            resp = await client.get(
+                f"{KIWIX_SERVER_URL}/catalog/v2/entries?count=50",
+                timeout=httpx.Timeout(3.0),
             )
-            log.info("Started Kiwix server on port 8080")
-            await asyncio.sleep(2)  # Give server time to start
-            return True
-        except Exception as e:
-            log.warning(f"Failed to start Kiwix server: {e}")
-            return False
-
-    async def _kiwix_search(self, client: httpx.AsyncClient, query: str, lang_code: str = "en") -> Optional[str]:
-        """Search offline Kiwix Wikipedia and return first article title."""
-        try:
-            search_url = f"{KIWIX_SEARCH_API}{query.replace(' ', '+')}"
-            resp = await self._rate_request(client, search_url, timeout=httpx.Timeout(5.0))
-
             if resp.status_code != 200:
-                log.warning(f"Kiwix search failed: {resp.status_code}")
-                return None
+                return {}
 
-            # Parse Kiwix search response (typically HTML or JSON)
-            content = resp.text
-
-            # Look for article links in the response
-            # Kiwix typically returns HTML with links like <a href="/content/en/Article_Title">
-            import re as regex
-            matches = regex.findall(r'/content/[^/]+/([^"]+)', content)
-
-            if matches:
-                return matches[0].replace("_", " ")  # Return first matching article
-
-            return None
+            xml = resp.text
+            # Parse <language> and <link type="text/html" href="/content/..."/>
+            entries: Dict[str, str] = {}
+            # Split into entry blocks
+            for block in re.findall(r'<entry>(.*?)</entry>', xml, re.DOTALL):
+                lang_match = re.search(r'<language>([^<]+)</language>', block)
+                href_match = re.search(r'<link type="text/html" href="([^"]+)"', block)
+                if lang_match and href_match:
+                    lang = lang_match.group(1).strip()   # e.g. "eng", "tam", "mal"
+                    href = href_match.group(1).strip()   # e.g. "/content/wikipedia_en_all_maxi_2026-02"
+                    entries[lang] = href
+                    log.info(f"Kiwix book discovered: {lang} → {href}")
+            return entries
         except Exception as e:
-            log.warning(f"Kiwix search error: {e}")
-            return None
+            log.warning(f"Kiwix catalog discovery failed: {e}")
+            return {}
 
-    async def _kiwix_get_summary(self, client: httpx.AsyncClient, article_title: str, lang_code: str = "en") -> Optional[Dict]:
-        """Retrieve article summary from offline Kiwix."""
-        try:
-            # Construct URL for Kiwix content
-            encoded_title = article_title.replace(" ", "_")
-            content_url = f"{KIWIX_CONTENT_API}{lang_code}/{encoded_title}"
+    async def _try_start_kiwix(self) -> bool:
+        """Attempt to start Kiwix server automatically."""
+        kiwix_paths = [
+            r"C:\Program Files\Kiwix\kiwix-serve.exe",
+            r"C:\Program Files (x86)\Kiwix\kiwix-serve.exe",
+            "kiwix-serve",
+        ]
+        zim_dir = r"D:\JARVIS_WIKI\Kiwix"
+        for kiwix_bin in kiwix_paths:
+            try:
+                subprocess.Popen(
+                    [kiwix_bin, "--port", "8080", f"{zim_dir}\\*.zim"],
+                    stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                )
+                log.info(f"Started Kiwix server: {kiwix_bin}")
+                await asyncio.sleep(2.5)
+                return True
+            except FileNotFoundError:
+                continue
+            except Exception as e:
+                log.warning(f"Kiwix start failed ({kiwix_bin}): {e}")
+        return False
 
-            resp = await self._rate_request(client, content_url, timeout=httpx.Timeout(5.0))
+    def _question_to_titles(self, question: str, lang_code: str = "en") -> List[str]:
+        """
+        Generate Wikipedia article title candidates from a natural language question.
+        Returns a list of titles to try, in order of likelihood.
+        """
+        # Strip question words to get topic
+        q = question.strip().rstrip("?!.")
+        patterns = [
+            r"^(who is|who was|who are|who were)\s+",
+            r"^(what is|what are|what was|what were)\s+(a |an |the )?",
+            r"^(when (did|was|were|is|are))\s+",
+            r"^(where (is|was|are|were|did))\s+",
+            r"^(how (does|do|did|is|are|was|were))\s+",
+            r"^(why (does|do|did|is|are|was|were))\s+",
+            r"^(tell me about|explain|describe|define)\s+",
+            r"^(what('s| is) the (capital|population|history|meaning) of)\s+",
+        ]
+        for pat in patterns:
+            q = re.sub(pat, "", q, flags=re.IGNORECASE).strip()
 
-            if resp.status_code != 200:
-                return None
+        candidates = []
 
-            # Extract text from HTML response (simplistic approach)
-            html = resp.text
+        # As-is (preserves original query words)
+        if q:
+            candidates.append(q)
 
-            # Remove script and style tags
-            html = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL)
-            html = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.DOTALL)
+        # Title Case
+        titled = q.title()
+        if titled != q:
+            candidates.append(titled)
 
-            # Extract text from paragraphs
-            paragraphs = re.findall(r'<p[^>]*>(.*?)</p>', html, flags=re.DOTALL)
-            if not paragraphs:
-                paragraphs = re.findall(r'<div[^>]*>(.*?)</div>', html, flags=re.DOTALL)
+        # Underscored (Wikipedia URL format)
+        underscored = q.replace(" ", "_")
+        candidates.append(underscored)
 
-            if paragraphs:
-                # Clean HTML tags
-                summary_html = paragraphs[0]
-                summary_text = re.sub(r'<[^>]+>', '', summary_html)
-                summary_text = summary_text.strip()[:500]  # First 500 chars
+        # Title-cased + underscored
+        candidates.append(titled.replace(" ", "_"))
+
+        # Capitalise first letter only
+        cap = q[0].upper() + q[1:] if q else q
+        candidates.append(cap)
+
+        # Deduplicate preserving order
+        seen: set = set()
+        result = []
+        for c in candidates:
+            if c not in seen:
+                seen.add(c)
+                result.append(c)
+        return result
+
+    async def _kiwix_fetch_article(
+        self,
+        client: httpx.AsyncClient,
+        book_path: str,
+        title: str,
+    ) -> Optional[Dict]:
+        """
+        Fetch an article from offline Kiwix by title.
+        Tries /A/{title} first (Wikipedia ZIM convention) then /{title}.
+        Returns {"title", "summary", "url", "type":"kiwix"} or None.
+        """
+        encoded = title.replace(" ", "_")
+        urls_to_try = [
+            f"{KIWIX_SERVER_URL}{book_path}/A/{encoded}",
+            f"{KIWIX_SERVER_URL}{book_path}/{encoded}",
+        ]
+
+        for url in urls_to_try:
+            try:
+                resp = await client.get(url, timeout=httpx.Timeout(5.0),
+                                        follow_redirects=True)
+                if resp.status_code != 200:
+                    continue
+
+                html = resp.text
+
+                # Skip disambiguation/error pages
+                page_title_match = re.search(r'<title>([^<]+)</title>', html)
+                page_title = page_title_match.group(1) if page_title_match else title
+                if any(w in page_title.lower() for w in
+                       ("not found", "invalid request", "error", "disambiguation")):
+                    continue
+
+                # Strip scripts, styles, tables (infoboxes), nav boxes
+                html = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL)
+                html = re.sub(r'<style[^>]*>.*?</style>',  '', html, flags=re.DOTALL)
+                html = re.sub(r'<table[^>]*>.*?</table>',  '', html, flags=re.DOTALL)
+                html = re.sub(r'<nav[^>]*>.*?</nav>',      '', html, flags=re.DOTALL)
+
+                # Collect substantive <p> paragraphs
+                raw_paras = re.findall(r'<p[^>]*>(.*?)</p>', html, flags=re.DOTALL)
+                clean_paras = []
+                for p in raw_paras:
+                    text = re.sub(r'<[^>]+>', '', p)        # strip HTML tags
+                    text = re.sub(r'\[\d+\]', '', text)     # strip [1], [2] citations
+                    text = re.sub(r'\s+', ' ', text).strip()
+                    if len(text) > 60:                       # skip stub/nav lines
+                        clean_paras.append(text)
+
+                if not clean_paras:
+                    continue
+
+                # Join first 3 paragraphs, cap at 600 chars
+                summary = " ".join(clean_paras[:3])
+                if len(summary) > 600:
+                    summary = summary[:597] + "..."
 
                 return {
-                    "title": article_title,
-                    "summary": summary_text,
-                    "type": "kiwix",
-                    "url": content_url,
-                    "lang": lang_code,
+                    "title":   page_title.strip(),
+                    "summary": summary,
+                    "url":     str(resp.url),
+                    "type":    "kiwix",
                 }
+            except Exception as e:
+                log.debug(f"Kiwix fetch error ({url}): {e}")
+                continue
 
-            return None
-        except Exception as e:
-            log.warning(f"Kiwix content retrieval error: {e}")
-            return None
+        return None
 
     # ------------------------------------------------------------------
     # Rate-limited HTTP
@@ -557,49 +647,69 @@ class VisionAgent:
                     source="internal",
                 )
 
-            # 2. Offline Kiwix lookup (primary) or Live Wikipedia fallback
-            search_query = self._extract_search_query(question)
-            lang_code = self.lang.split("-")[0] if "-" in self.lang else self.lang  # Extract language code (e.g., "en" from "en-US")
+            # 2. Offline Kiwix lookup (primary) — direct article access
+            # Kiwix /search API rejects multi-language setups; VISION uses
+            # title-based direct lookup: /content/{book_path}/A/{title}
+            lang_code = self.lang.split("-")[0] if "-" in self.lang else self.lang
+            zim_lang  = LANGUAGE_CONFIG.get(self.lang, LANGUAGE_CONFIG.get(lang_code, {})).get("zim_lang", "eng")
+            source_language = LANGUAGE_CONFIG.get(self.lang, LANGUAGE_CONFIG.get(lang_code, {})).get("name", "English Wikipedia")
 
             async with httpx.AsyncClient(
                 headers={"User-Agent": "JARVIS-VISION/1.0 (jarvis-assistant)"},
                 timeout=httpx.Timeout(10.0),
+                follow_redirects=True,
             ) as client:
-                # Try Kiwix first (offline Wikipedia)
+                # 2a. Check Kiwix availability
                 kiwix_available = await self._is_kiwix_available(client)
 
                 if not kiwix_available:
-                    log.warning("Kiwix offline server not available, attempting to start...")
+                    log.warning("Kiwix server not reachable — attempting auto-start...")
                     started = await self._try_start_kiwix()
                     if started:
                         kiwix_available = await self._is_kiwix_available(client)
 
                 if kiwix_available:
-                    # Query offline Kiwix
-                    log.info(f"Querying offline Wikipedia ({self.lang})")
-                    article_title = await self._kiwix_search(client, search_query, lang_code)
+                    # 2b. Discover which book path to use for this language
+                    book_paths = await self._discover_book_paths(client)
+                    book_path  = book_paths.get(zim_lang)
 
-                    if not article_title and search_query != question:
-                        article_title = await self._kiwix_search(client, question, lang_code)
+                    if not book_path:
+                        # Fallback: try known naming pattern
+                        for zl, path in book_paths.items():
+                            if zl == zim_lang:
+                                book_path = path
+                                break
+                        if not book_path and book_paths:
+                            # Use English Wikipedia if no exact match
+                            book_path = book_paths.get("eng", next(iter(book_paths.values())))
 
-                    if article_title:
-                        wiki = await self._kiwix_get_summary(client, article_title, lang_code)
+                    if book_path:
+                        # 2c. Generate article title candidates and try each
+                        search_query = self._extract_search_query(question)
+                        title_candidates = self._question_to_titles(search_query, lang_code)
+
+                        # Also try the raw question stripped of question words
+                        if question != search_query:
+                            title_candidates += self._question_to_titles(question, lang_code)
+
+                        wiki = None
+                        for candidate in title_candidates:
+                            wiki = await self._kiwix_fetch_article(client, book_path, candidate)
+                            if wiki and wiki.get("summary"):
+                                break
 
                         if wiki and wiki.get("summary"):
-                            summary = wiki["summary"]
-                            source_url = wiki.get("url", "")
-                            article_ttl = wiki.get("title", article_title)
-                            source_language = LANGUAGE_CONFIG.get(self.lang, {}).get("name", "Unknown")
+                            summary     = wiki["summary"]
+                            source_url  = wiki.get("url", "")
+                            article_ttl = wiki.get("title", search_query)
 
-                            q_words = set(norm.split())
+                            q_words     = set(norm.split())
                             title_words = set(self._normalize(article_ttl).split())
-                            overlap = q_words & title_words
-                            confidence = "high" if len(overlap) >= 2 else "medium"
-
-                            follow_up = self._follow_up(question, article_ttl)
+                            overlap     = q_words & title_words
+                            confidence  = "high" if len(overlap) >= 2 else "medium"
+                            follow_up   = self._follow_up(question, article_ttl)
 
                             answer = summary
-                            # Enrich with system context if this is a system question
                             if is_system_question and include_system_context:
                                 system_context = await self._get_system_context()
                                 if system_context:
@@ -614,16 +724,23 @@ class VisionAgent:
                                 follow_up=follow_up,
                             )
 
-                            # Persist to knowledge DB
                             await loop.run_in_executor(
                                 None, self._store_knowledge,
                                 question, summary, "kiwix", source_url, confidence, follow_up,
                             )
 
-                            log.info(f"VISION → {confidence} confidence from offline Wikipedia ({source_language})")
+                            log.info(f"VISION → {confidence} from offline {source_language} ({article_ttl!r})")
                             return response
 
-                # Kiwix failed or not available - try live Wikipedia fallback (if enabled)
+                        # Book found but article not matched — return no-result
+                        log.info("VISION: Kiwix article not found for this query")
+                        return VisionResponse(
+                            confidence="uncertain",
+                            answer="I could not find information on that topic in my offline Wikipedia collection.",
+                            source="internal",
+                        )
+
+                # Kiwix unavailable and fallback disabled
                 if not kiwix_available and not USE_LIVE_WIKIPEDIA_FALLBACK:
                     return VisionResponse(
                         confidence="uncertain",
